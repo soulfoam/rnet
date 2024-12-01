@@ -1,0 +1,170 @@
+export_library
+{
+#if OS_WINDOWS
+
+#if ARCH_X64
+    rnet_socket           :: type_alias = u64;
+    RNET_INVALID_SOCKET   :: define u64 = -1;
+#else
+    rnet_socket           :: type_alias = u32;
+    RNET_INVALID_SOCKET   :: define u32 = -1;
+#end
+
+    rnet_socket_size      :: type_alias = c_int;
+
+#else
+    rnet_socket           :: type_alias   = c_int;
+    RNET_INVALID_SOCKET   :: define c_int = -1;
+    rnet_socket_size      :: type_alias   = c_uint;
+#end
+}
+
+export
+{
+#if OS_WINDOWS
+    RNET_POLLRDNORM  :: define c_int = 0x0100;
+    RNET_POLLRDBAND  :: define c_int = 0x0200;
+    RNET_POLLIN      :: define c_int = (RNET_POLLRDNORM | RNET_POLLRDBAND);
+    RNET_POLLPRI     :: define c_int = 0x0400;
+    RNET_POLLWRNORM  :: define c_int = 0x0010;
+    RNET_POLLOUT     :: define c_int = (RNET_POLLWRNORM);
+    RNET_POLLWRBAND  :: define c_int = 0x0020;
+    RNET_POLLERR     :: define c_int = 0x0001;
+    RNET_POLLHUP     :: define c_int = 0x0002;
+    RNET_POLLNVAL    :: define c_int = 0x0004;
+
+    RNET_WSAEISCONN  :: define c_int = 10056;
+
+    RNET_NATIVE_FIONBIO :: define c_int = (0x80000000 | (((size_of(c_ulong) as c_long) & 0x7f) << 16) | (('f') << 8) | (126));
+
+    RNET_SOL_SOCKET    :: define c_int = 0xffff;
+    RNET_SO_REUSE_ADDR :: define c_int = 0x0004;
+
+    rnet_native_send_to   :: fn (s: rnet_socket, buffer: void&, buffer_size: c_int, flags: c_int, to: rnet_address&, to_size: rnet_socket_size) -> c_int = extern "sendto"; 
+    rnet_native_send      :: fn (s: rnet_socket, buffer: void&, buffer_size: c_int, flags: c_int) -> c_int = extern "send";
+    rnet_native_poll      :: fn (fds: rnet_poll_fd&, fds_count: c_ulong, timeout: c_int) -> c_int = extern "WSAPoll";
+    rnet_native_recv      :: fn (s: rnet_socket, buffer: void&, buffer_size: c_int, flags: c_int) -> c_int = extern "recv";
+    rnet_native_recv_from :: fn (s: rnet_socket, buffer: void&, buffer_size: c_int, flags: c_int, addr: void&, addr_size: rnet_socket_size&) -> c_int = extern "recvfrom";
+
+    rnet_native_ioctlsocket  :: fn (s: rnet_socket, cmd: c_ulong, argp: c_ulong&) -> c_int = extern "ioctlsocket";
+    rnet_native_close_socket :: fn (s: rnet_socket) -> c_int  = extern "closesocket";
+
+    rnet_native_wsa_startup :: fn (ver: c_ushort, data: rnet_wsa_data&) -> c_int  = extern "WSAStartup";
+    rnet_native_wsa_cleanup :: fn () -> c_int  = extern "WSACleanup";
+
+    rnet_native_get_error_value :: fn () -> c_int  = extern "WSAGetLastError";
+
+    rnet_native_addr_info :: struct 
+    {
+       flags     : c_int;
+       family    : c_int;
+       socktype  : c_int;
+       protocol  : c_int;
+       addrlen   : rnet_socket_size;
+       canonname : c_char&;
+       addr      : void&;
+       next      : rnet_native_addr_info&;
+    }
+
+    rnet_native_getaddrinfo :: fn (node: c_char&, service: c_char&, hints: rnet_native_addr_info&, res: rnet_native_addr_info&&) -> c_int = extern "getaddrinfo";
+
+    rnet_wsa_data :: struct 
+    {
+        w_version        : c_ushort;
+        w_high_version   : c_ushort;
+    #if ARCH_X64
+        imax_sockets     : c_ushort;
+        imax_udpdg       : c_short;
+        lp_vendor_info   : c_char&;
+        sz_description   : c_char[257];
+        sz_system_status : c_char[129];
+    #else
+        sz_description   : c_char[257];
+        sz_system_status : c_char[129];
+        imax_sockets     : c_ushort;
+        imax_udpdg       : c_short;
+        lp_vendor_info   : c_char&;
+    #end
+    } 
+
+#else
+    RNET_POLLIN   :: define c_int = 0x001;	// There is data to read.  */
+    RNET_POLLPRI  :: define c_int = 0x002;	// There is urgent data to read.  */
+    RNET_POLLOUT  :: define c_int = 0x004;	// Writing now will not block.  */
+    RNET_POLLERR  :: define c_int = 0x008;	// Error condition.  */
+    RNET_POLLHUP  :: define c_int = 0x010;	// Hung up.  */
+    RNET_POLLNVAL :: define c_int = 0x020;	// Invalid polling request.  */
+
+    RNET_SOL_SOCKET    :: define u8 = 1;
+    RNET_SO_REUSE_ADDR :: define u8 = 2;
+
+    RNET_NATIVE_GETFL   :: define c_int = 3;
+    RNET_NATIVE_SETFL   :: define c_int = 4;
+    RNET_NATIVE_NONBLOCK :: define c_int = 0x800;
+
+    rnet_native_send_to   :: fn (s: rnet_socket, buffer: void&, buffer_size: usize, flags: c_int, to: rnet_address&, to_size: rnet_socket_size) -> ssize = extern "sendto";
+    rnet_native_send      :: fn (s: rnet_socket, buffer: void&, buffer_size: usize, flags: c_int) -> ssize = extern "send";
+    rnet_native_poll      :: fn (fds: rnet_poll_fd&, fds_count: c_ulong, timeout: c_int) -> c_int  = extern "poll";
+    rnet_native_fcntl     :: fn (fd: c_int, cmd: c_int, cv: c_variadic) -> c_int = extern "fcntl";
+    rnet_native_recv      :: fn (s: rnet_socket, buffer: void&, buffer_size: usize, flags: c_int) -> ssize = extern "recv";
+    rnet_native_recv_from :: fn (s: rnet_socket, buffer: void&, buffer_size: usize, flags: c_int, addr: void&, addr_size: rnet_socket_size&) -> ssize = extern "recvfrom";
+
+    rnet_native_addr_info :: struct 
+    {
+       flags     : c_int;
+       family    : c_int;
+       socktype  : c_int;
+       protocol  : c_int;
+       addrlen   : rnet_socket_size;
+       addr      : void&;
+       canonname : c_char&;
+       next      : rnet_native_addr_info&;
+    }
+
+    rnet_native_getaddrinfo :: fn (node: c_char&, service: c_char&, hints: rnet_native_addr_info&, res: rnet_native_addr_info&&) -> c_int = extern "getaddrinfo";
+
+    rnet_native_close_socket :: fn (s: rnet_socket) -> c_int  = extern "close";
+    rnet_native_get_error_value :: fn () -> c_int& = extern "__RLY_errno";
+
+
+    clib_signal_fn :: type_alias = fn (sig: c_int);
+    clib_signal    :: fn (sig: c_int, handler: clib_signal_fn&) -> clib_signal_fn& = extern "signal";
+    CLIB_SIG_IGN   :: define clib_signal_fn& = 1 as clib_signal_fn&;  // Ignore signal
+    CLIB_SIGPIPE   :: define c_int = 13;
+
+#end
+
+    RNET_NATIVE_TCP_NO_DELAY :: define c_int = 1;
+
+    rnet_socket_type :: enum c_int
+    {
+        RNET_SOCKET_STREAM   = 1;
+        RNET_SOCKET_DATAGRAM = 2;
+    }
+
+    rnet_protocol :: enum c_int
+    {
+        RNET_PROTOCOL_TCP = 6;
+        RNET_PROTOCOL_UDP = 17;
+    }
+
+    rnet_poll_fd :: struct
+    {
+        socket     : rnet_socket;
+        in_events  : c_ushort;
+        out_events : c_ushort;
+    }
+
+    rnet_native_create_socket  :: fn (family: c_int, socket_type: c_int, protocol: c_int) -> rnet_socket = extern "socket";
+    rnet_native_set_socket_opt :: fn (s: rnet_socket, level: c_int, option_name: c_int, option_value: void&, option_size: rnet_socket_size) -> c_int  = extern "setsockopt";
+    rnet_native_bind           :: fn (s: rnet_socket, addr: rnet_address&, size: rnet_socket_size) -> c_int = extern "bind";
+    rnet_native_listen         :: fn (s: rnet_socket, backlog: c_int) -> c_int = extern "listen";
+    rnet_native_accept         :: fn (s: rnet_socket, addr: void&, size: rnet_socket_size&) -> c_int = extern "accept";
+    rnet_native_connect        :: fn (s: rnet_socket, addr: rnet_address&, size: rnet_socket_size) -> c_int = extern "connect";
+
+}
+
+import
+{
+    "rnet/address";
+}

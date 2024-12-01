@@ -1,0 +1,40 @@
+export
+{
+    rnet_object :: struct
+    {
+        type   : rnet_object_type;
+        data   : rnet_object_data;
+        socket : rnet_socket;
+        is_being_polled : bool;
+    }
+
+    rnet_object_type :: enum u8
+    {
+        RNET_OBJECT_TCP;
+        RNET_OBJECT_UDP;
+    }
+
+    rnet_object_data :: union
+    {
+        tcp : rnet_tcp;
+        udp : rnet_udp;
+    }
+
+    rnet_object_write :: struct
+    {
+        buffer        : void&;
+        buffer_size   : usize;
+        bytes_written : usize;
+        address       : rnet_address;
+        udp_sent_fn   : rnet_udp_sent_fn&;
+        tcp_write_fn  : rnet_tcp_write_fn&;
+
+        next          : rnet_object_write&;
+    }
+}
+
+import
+{
+    "rnet";
+}
+

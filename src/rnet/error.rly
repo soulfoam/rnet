@@ -1,0 +1,65 @@
+export_library
+{ 
+    rnet_error :: enum u16
+    {
+        RNET_OK;
+        RNET_ERROR_SETUP;
+        RNET_ERROR_CREATE_SOCKET;
+        RNET_ERROR_BIND;
+        RNET_ERROR_POLL;
+        RNET_ERROR_SEND;
+        RNET_ERROR_RECV;
+        RNET_ERROR_SET_NON_BLOCKING;
+        RNET_ERROR_READ_BUFFER_FULL;
+        RNET_ERROR_TRY_AGAIN;
+        RNET_ERROR_MAX_SOCKETS;
+        RNET_ERROR_WRITE_QUEUE_FULL;
+        RNET_ERROR_TCP_SET_NO_DELAY;
+        RNET_ERROR_TCP_NETWORK_ACCEPT;
+        RNET_ERROR_TCP_CONNECT;
+        RNET_ERROR_TCP_LISTEN;
+        RNET_ERROR_TCP_ACCEPT;
+        RNET_ERROR_TCP_CLOSED;
+        RNET_ERROR_UDP;
+        RNET_ERROR_INVALID_IP_STRING;
+        RNET_ERROR_SSL_NEW_CONTEXT;
+        RNET_ERROR_SSL_CERTIFICATE;
+        RNET_ERROR_SSL_PRIVATE_KEY;
+    }
+
+    rnet_error_as_string :: fn (err: rnet_error) -> string;
+}
+
+rnet_error_as_string :: fn (err: rnet_error) -> string
+{
+    strs: string[] =
+    { 
+        "RNET_OK",
+        "RNET_ERROR_SETUP",
+        "RNET_ERROR_CREATE_SOCKET",
+        "RNET_ERROR_BIND",
+        "RNET_ERROR_POLL",
+        "RNET_ERROR_SEND",
+        "RNET_ERROR_RECV",
+        "RNET_ERROR_SET_NON_BLOCKING",
+        "RNET_ERROR_READ_BUFFER_FULL",
+        "RNET_ERROR_TRY_AGAIN",
+        "RNET_ERROR_MAX_SOCKETS",
+        "RNET_ERROR_WRITE_QUEUE_FULL",
+        "RNET_ERROR_TCP_SET_NO_DELAY",
+        "RNET_ERROR_TCP_NETWORK_ACCEPT",
+        "RNET_ERROR_TCP_CONNECT",
+        "RNET_ERROR_TCP_LISTEN",
+        "RNET_ERROR_TCP_ACCEPT",
+        "RNET_ERROR_TCP_CLOSED",
+        "RNET_ERROR_UDP",
+        "RNET_ERROR_INVALID_IP_STRING",
+        "RNET_ERROR_SSL_NEW_CONTEXT",
+        "RNET_ERROR_SSL_CERTIFICATE",
+        "RNET_ERROR_SSL_PRIVATE_KEY",
+    };
+
+    return strs[err];
+}
+
+

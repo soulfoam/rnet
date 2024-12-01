@@ -1,0 +1,44 @@
+targets = 
+[ 
+    default =
+    [
+        libraries = 
+        [
+            "git https://github.com/soulfoam/std",
+        ],
+
+        links =
+        [
+            x64_windows_mingw = ["ws2_32"],
+            x64_windows_msvc  = ["ws2_32"]
+        ],
+        
+        constants = 
+        [
+            RNET_OPENSSL = false
+        ]
+    ],
+
+    openssl =
+    [
+        libraries = 
+        [
+            "git https://github.com/soulfoam/std",
+        ],
+
+        links =
+        [
+            x64_windows_mingw = ["ws2_32", "ssl"],
+            x64_windows_msvc  = ["ws2_32", "ssl"],
+            x64_linux_gcc     = ["ssl", "crypto"]
+        ],
+        
+        constants = 
+        [
+            RNET_OPENSSL = true
+        ]
+
+    ]
+
+],
+

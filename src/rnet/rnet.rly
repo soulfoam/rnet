@@ -1,0 +1,494 @@
+export_library
+{
+    rnet_setup   :: fn (options: rnet_options&) -> rnet_error;
+    rnet_cleanup :: fn ();
+
+    rnet_poll             :: fn () -> rnet_error;
+    rnet_poll_until_event :: fn () -> rnet_error;
+
+    rnet_for_each_tcp :: it (declare tcp: rnet_tcp&);
+    rnet_for_each_udp :: it (declare udp: rnet_udp&);
+
+    rnet_get_user_data    :: fn () -> void&;
+    rnet_get_native_error :: fn () -> c_int;
+
+    rnet_options :: struct
+    {   
+        max_sockets         : usize;
+        max_writes_in_queue : usize;
+
+        user_data           : void&;
+
+        mem_alloc_fn        : rnet_alloc_fn&;
+        mem_dealloc_fn      : rnet_dealloc_fn&;
+        mem_user_data       : void&;
+    }
+
+    RNET_NO_FLAGS   :: define u8 = 0;
+
+    rnet_alloc_fn   :: type_alias = fn (size: usize, user_data: void&) -> void&;
+    rnet_dealloc_fn :: type_alias = fn (ptr: void&, user_data: void&);
+}
+
+export
+{
+    rnet_state :: struct
+    {
+        objects           : rnet_object&;
+        max_objects       : usize;
+        objects_stack     : rnet_object&&;
+        objects_stack_top : usize;
+
+        object_writes           : rnet_object_write&;
+        object_writes_count     : usize;
+        max_object_writes       : usize;
+        object_writes_stack     : rnet_object_write&&;
+        object_writes_stack_top : usize;
+
+        poll_fds          : rnet_poll_fd&;
+
+        user_data         : void&;
+
+        mem_dealloc_fn    : rnet_dealloc_fn&;
+        mem_user_data     : void&;
+    }
+    g_rnet: rnet_state;
+
+    rnet_push_object       :: fn (obj: rnet_object&);
+    rnet_pop_object        :: fn () -> rnet_object&;
+    rnet_push_object_write :: fn (obj_write: rnet_object_write&);
+    rnet_pop_object_write  :: fn () -> rnet_object_write&;
+
+    rnet_bind               :: fn (s: rnet_socket, addr: rnet_address&) -> rnet_error;
+    rnet_create_socket      :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_type, family: rnet_address_family) -> rnet_error;
+    rnet_socket_would_block :: fn () -> bool;
+
+    rnet_for_each_object :: it (declare obj: rnet_object&);
+}
+
+import
+{
+    "rnet";
+    "std";
+}
+
+rnet_setup :: fn (options: rnet_options&) -> rnet_error
+{
+#if OS_WINDOWS 
+    data: rnet_wsa_data;
+    res: c_int = rnet_native_wsa_startup(514, data&);
+    if (res != 0) return RNET_ERROR_SETUP;
+#else
+    clib_signal(CLIB_SIGPIPE, CLIB_SIG_IGN) as void;
+#end
+
+    g_rnet.max_objects             = options.max_sockets;
+    g_rnet.max_object_writes       = options.max_writes_in_queue;
+    g_rnet.objects_stack_top       = USIZE_MAX_VALUE;
+    g_rnet.object_writes_stack_top = USIZE_MAX_VALUE;
+    g_rnet.user_data               = options.user_data;
+
+    objects_size       : usize = g_rnet.max_objects * size_of(g_rnet.objects@);
+    objects_stack_size : usize = g_rnet.max_objects * size_of(g_rnet.objects_stack_top);
+
+    object_writes_size       : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes@);
+    object_writes_stack_size : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes_stack_top);
+
+    if (options.mem_alloc_fn != NULL)
+    {
+        g_rnet.objects             = options.mem_alloc_fn(objects_size, options.user_data);
+        g_rnet.objects_stack       = options.mem_alloc_fn(objects_stack_size, options.user_data);
+        g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.user_data);
+        g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.user_data);
+        g_rnet.poll_fds            = options.mem_alloc_fn(g_rnet.max_objects, options.user_data);
+    }
+    else
+    {
+        g_rnet.objects             = std_mem_alloc(objects_size);
+        g_rnet.objects_stack       = std_mem_alloc(objects_stack_size);
+        g_rnet.object_writes       = std_mem_alloc(object_writes_size);
+        g_rnet.object_writes_stack = std_mem_alloc(object_writes_stack_size);
+        g_rnet.poll_fds            = std_mem_alloc(g_rnet.max_objects);
+    }
+
+    for_each_object_reverse(obj: rnet_object&)
+    {
+        std_mem_set(obj, size_of(rnet_object), 0);
+        obj.socket = RNET_INVALID_SOCKET;
+        rnet_push_object(obj);
+    }
+
+    for_each_object_write_reverse(write: rnet_object_write&)
+    {
+        rnet_push_object_write(write);
+    }
+
+    return RNET_OK;
+}
+
+rnet_cleanup :: fn () 
+{  
+    rnet_for_each_object(obj: rnet_object&)
+    {
+        if (obj.type == RNET_OBJECT_TCP)
+        {
+            rnet_tcp_destroy(obj.data.tcp&);
+        }
+        else if (obj.type == RNET_OBJECT_UDP)
+        {
+            rnet_udp_destroy(obj.data.udp&);
+        }
+    }
+
+    if (g_rnet.mem_dealloc_fn != NULL)
+    { 
+        g_rnet.mem_dealloc_fn(g_rnet.objects, g_rnet.mem_user_data);
+        g_rnet.mem_dealloc_fn(g_rnet.objects_stack, g_rnet.mem_user_data);
+        g_rnet.mem_dealloc_fn(g_rnet.object_writes, g_rnet.mem_user_data);
+        g_rnet.mem_dealloc_fn(g_rnet.object_writes_stack, g_rnet.mem_user_data);
+        g_rnet.mem_dealloc_fn(g_rnet.poll_fds, g_rnet.mem_user_data);
+    }
+    else
+    {
+        std_mem_dealloc(g_rnet.objects);
+        std_mem_dealloc(g_rnet.objects_stack);
+        std_mem_dealloc(g_rnet.object_writes);      
+        std_mem_dealloc(g_rnet.object_writes_stack);
+        std_mem_dealloc(g_rnet.poll_fds); 
+    }    
+
+#if OS_WINDOWS 
+    rnet_native_wsa_cleanup() as void;
+#end
+
+}
+
+rnet_poll :: fn () -> rnet_error
+{
+    return poll(0);
+}
+
+rnet_poll_until_event :: fn () -> rnet_error
+{
+    return poll(-1);
+}
+
+poll :: fn (timeout_ms: s32) -> rnet_error
+{
+    count: usize = 0;    
+    rnet_for_each_object(obj: rnet_object&)
+    {
+        obj.is_being_polled = true;
+
+        poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
+        poll_fd.socket     = obj.socket;
+        poll_fd.in_events  = 0;
+        poll_fd.out_events = 0; 
+
+        if (obj.type == RNET_OBJECT_TCP)
+        {
+            tcp: rnet_tcp& = obj.data.tcp&;
+
+            if (tcp.read_fn != NULL)
+            {
+                poll_fd.in_events |= RNET_POLLIN;
+            }
+
+            if (tcp.writes != NULL)
+            {
+                poll_fd.in_events |= RNET_POLLOUT;
+            }
+     
+            if (tcp.type == RNET_TCP_LISTENER || 
+               (tcp.type == RNET_TCP_CONNECTOR && rnet_tcp_is_connect_in_progress(tcp)) ||
+               (tcp.type == RNET_TCP_LISTENER_CONNECTION && tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS))
+            {
+                poll_fd.in_events = RNET_POLLIN | RNET_POLLOUT;
+            }
+        }
+        else if (obj.type == RNET_OBJECT_UDP)
+        {
+            udp: rnet_udp& = obj.data.udp&;
+
+            if (udp.recv_fn != NULL)
+            {
+                poll_fd.in_events |= RNET_POLLIN;
+            }
+            if (udp.writes != NULL)
+            {
+                poll_fd.in_events |= RNET_POLLOUT;
+            }
+        }
+
+        count += 1;
+    }
+
+    if (count == 0) return RNET_OK;
+
+    res: c_int = rnet_native_poll(g_rnet.poll_fds, count, timeout_ms);
+    if (res < 0) return RNET_ERROR_POLL;
+
+    count = 0;
+
+    rnet_for_each_object(obj: rnet_object&)
+    {
+        if (!obj.is_being_polled) continue;
+        obj.is_being_polled = false;
+
+        poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
+        
+        if (obj.type == RNET_OBJECT_TCP)
+        {
+            tcp: rnet_tcp& = obj.data.tcp&;
+
+            if (poll_fd.out_events & RNET_POLLERR > 0)
+            {
+                tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED); 
+            }
+            else
+            {
+                switch (tcp.type)
+                {
+                    RNET_TCP_NONE{}
+                    RNET_TCP_LISTENER
+                    { 
+                        if (poll_fd.out_events & RNET_POLLIN > 0) rnet_tcp_internal_accept(tcp);
+                    }
+                    RNET_TCP_LISTENER_CONNECTION
+                    {
+                        if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS && poll_fd.out_events != 0)
+                        {
+                            rnet_tcp_internal_accept_ssl(tcp);
+                        }
+                        else
+                        {
+                            if (poll_fd.out_events & RNET_POLLIN > 0)  rnet_tcp_internal_read(tcp);
+                            if (poll_fd.out_events & RNET_POLLOUT > 0) rnet_tcp_internal_write(tcp);
+                        }
+                    }
+                    RNET_TCP_CONNECTOR
+                    {
+                        if (rnet_tcp_is_connect_in_progress(tcp) && poll_fd.out_events != 0)
+                        {
+                            rnet_tcp_internal_connect(tcp);
+                        }
+                        else if (rnet_tcp_is_connected(tcp))
+                        {
+                            if (poll_fd.out_events & RNET_POLLIN > 0)  rnet_tcp_internal_read(tcp);
+                            if (poll_fd.out_events & RNET_POLLOUT > 0) rnet_tcp_internal_write(tcp);
+                        }
+
+                    }
+                }
+            }
+        }
+        else if (obj.type == RNET_OBJECT_UDP)
+        {
+            udp: rnet_udp& = obj.data.udp&;
+
+            if (poll_fd.out_events & RNET_POLLERR > 0)
+            {
+                udp.error_fn(udp, RNET_ERROR_UDP); 
+            }
+            else
+            {
+                if (poll_fd.out_events & RNET_POLLIN > 0)
+                {
+                    from: rnet_address;
+                    from_size: rnet_socket_size = size_of(from.data.ipv4);
+                    res: c_int = rnet_native_recv_from(udp.base.socket, udp.read_buffer, udp.read_buffer_capacity, 0, from.data.ipv4&, from_size&); 
+                    if (res < 0) 
+                    {
+                        udp.error_fn(udp, RNET_ERROR_RECV);
+                    }
+                    else
+                    {
+                        udp.recv_fn(udp, from, udp.read_buffer, res);
+                        std_mem_set(udp.read_buffer, udp.read_buffer_capacity, 0);
+                    }
+                }
+
+                if (poll_fd.out_events & RNET_POLLOUT > 0)
+                {
+                    write: rnet_object_write& = udp.writes;
+                    if (write != NULL)
+                    {
+                        buf: u8[RNET_IPV4_STRING_SIZE];
+                        res: c_int = rnet_native_send_to(udp.base.socket, write.buffer, write.buffer_size, 0, rnet_address_get_data(write.address&), rnet_address_get_size(write.address&)); 
+                        if (res < 0) 
+                        {
+                            udp.error_fn(udp, RNET_ERROR_SEND);
+                        }
+                        else
+                        {
+                            write.udp_sent_fn(udp, write.address, write.buffer, res);
+
+                            next: rnet_object_write& = udp.writes.next;
+                            rnet_push_object_write(udp.writes);
+                            udp.writes = next;
+                        }
+                    }
+                }
+            }
+        }
+
+        count += 1;
+    }
+
+    return RNET_OK;
+}
+
+rnet_create_socket :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_type, family: rnet_address_family) -> rnet_error
+{
+    dst_socket@ = rnet_native_create_socket(family, socket_type, 0);
+    if (dst_socket@ == RNET_INVALID_SOCKET) return RNET_ERROR_CREATE_SOCKET;
+    
+    return change_socket_to_non_blocking(dst_socket@);   
+}
+
+rnet_bind :: fn (socket: rnet_socket, addr: rnet_address&) -> rnet_error
+{ 
+    opt: c_int = 1;
+    if (rnet_native_set_socket_opt(socket, RNET_SOL_SOCKET, RNET_SO_REUSE_ADDR, opt&, size_of(opt)) != 0)
+    {
+        return RNET_ERROR_BIND;
+    }
+
+    if (rnet_native_bind(socket, rnet_address_get_data(addr), rnet_address_get_size(addr)) == 0) 
+    {
+        return RNET_OK;
+    }
+    else
+    {
+        return RNET_ERROR_BIND;
+    }
+}
+
+rnet_for_each_tcp :: it (declare tcp: rnet_tcp&)
+{
+    rnet_for_each_object(obj: rnet_object&)
+    {
+        if (obj.type != RNET_OBJECT_TCP) continue;
+        tcp = obj.data.tcp&;
+        yield;
+    }
+}
+
+rnet_for_each_udp :: it (declare udp: rnet_udp&)
+{
+    rnet_for_each_object(obj: rnet_object&)
+    {
+        if (obj.type != RNET_OBJECT_UDP) continue;
+        udp = obj.data.udp&;
+        yield;
+    }
+}
+
+rnet_push_object :: fn (obj: rnet_object&)
+{
+    g_rnet.objects_stack_top += 1;
+    g_rnet.objects_stack[g_rnet.objects_stack_top] = obj;
+}
+
+rnet_pop_object  :: fn () -> rnet_object&
+{
+    if (g_rnet.objects_stack_top == USIZE_MAX_VALUE) return NULL;
+
+    obj: rnet_object& = g_rnet.objects_stack[g_rnet.objects_stack_top];
+    g_rnet.objects_stack_top -= 1;
+
+    return obj;
+}
+
+rnet_push_object_write :: fn (obj_write: rnet_object_write&)
+{
+    std_mem_set(obj_write, size_of(rnet_object_write), 0);
+    g_rnet.object_writes_stack_top += 1;
+    g_rnet.object_writes_stack[g_rnet.object_writes_stack_top] = obj_write;
+}
+
+rnet_pop_object_write  :: fn () -> rnet_object_write&
+{
+    if (g_rnet.object_writes_stack_top == USIZE_MAX_VALUE) return NULL;
+
+    w: rnet_object_write& = g_rnet.object_writes_stack[g_rnet.object_writes_stack_top];
+    g_rnet.object_writes_stack_top -= 1;
+
+    return w;
+}
+
+rnet_socket_would_block :: fn () -> bool
+{
+    err: c_int = rnet_get_native_error();
+#if OS_WINDOWS
+    WSAEWOULDBLOCK :: define c_int = 10035;
+    return err == WSAEWOULDBLOCK;
+#else
+    EAGAIN      :: define c_int = 11;
+    EINPROGRESS :: define c_int = 115;
+    return err == EAGAIN || err == EINPROGRESS;
+#end
+}
+
+change_socket_to_non_blocking :: fn (socket: rnet_socket) -> rnet_error
+{
+#if OS_WINDOWS
+    mode: c_ulong = 1;
+    if (rnet_native_ioctlsocket(socket, RNET_NATIVE_FIONBIO, mode&) != 0) return RNET_ERROR_SET_NON_BLOCKING; 
+#else
+    if (rnet_native_fcntl(socket, RNET_NATIVE_SETFL, rnet_native_fcntl(socket, RNET_NATIVE_GETFL, 0) | RNET_NATIVE_NONBLOCK) == -1) return RNET_ERROR_SET_NON_BLOCKING;
+#end
+
+    return RNET_OK;
+}
+
+rnet_get_user_data :: fn () -> void&
+{
+    return g_rnet.user_data;
+}
+
+rnet_get_native_error :: fn () -> c_int
+{
+#if OS_WINDOWS
+    return rnet_native_get_error_value();
+#else 
+    return rnet_native_get_error_value()@;
+#end
+}
+
+rnet_for_each_object :: it (declare obj: rnet_object&)
+{
+    i: usize = 0;
+    while (i < g_rnet.max_objects)
+    {
+        obj = g_rnet.objects[i]&; 
+        if (obj.socket != RNET_INVALID_SOCKET) 
+        {
+            yield;
+        }
+        i += 1;
+    }
+}
+
+for_each_object_reverse :: it (declare obj: rnet_object&)
+{ 
+    i: usize = g_rnet.max_objects;
+    while (i > 0)
+    {
+        i -= 1;
+        obj = g_rnet.objects[i]&;
+        yield;
+    }
+}
+
+for_each_object_write_reverse :: it (declare write: rnet_object_write&)
+{ 
+    i: usize = g_rnet.max_object_writes;
+    while (i > 0)
+    {
+        i -= 1;
+        write = g_rnet.object_writes[i]&;
+        yield;
+    }
+}
+

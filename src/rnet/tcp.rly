@@ -1,0 +1,754 @@
+export_library
+{
+    rnet_tcp :: struct;
+
+    rnet_tcp_create              :: fn (dst_tcp: rnet_tcp&&, error_fn: rnet_tcp_error_fn&) -> rnet_error;
+    rnet_tcp_destroy             :: fn (tcp: rnet_tcp&);
+    rnet_tcp_bind                :: fn (tcp: rnet_tcp&, address: rnet_address) -> rnet_error;
+    rnet_tcp_listen              :: fn (tcp: rnet_tcp&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
+    rnet_tcp_bind_and_listen     :: fn (tcp: rnet_tcp&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
+    rnet_tcp_accept              :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&);
+    rnet_tcp_connect             :: fn (tcp: rnet_tcp&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&);
+    rnet_tcp_write               :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&);
+    rnet_tcp_broadcast_write     :: fn (listener: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&);
+    rnet_tcp_clear_writes        :: fn (tcp: rnet_tcp&);
+
+#if RNET_OPENSSL
+    rnet_tcp_listen_ssl          :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
+    rnet_tcp_bind_and_listen_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
+    rnet_tcp_connect_ssl         :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&);
+#end
+
+    rnet_tcp_error_fn    :: type_alias = fn (tcp: rnet_tcp&, error: rnet_error);
+    rnet_tcp_accept_fn   :: type_alias = fn (new_tcp: rnet_tcp&);
+    rnet_tcp_connect_fn  :: type_alias = fn (tcp: rnet_tcp&);
+    rnet_tcp_read_fn     :: type_alias = fn (tcp: rnet_tcp&);
+    rnet_tcp_write_fn    :: type_alias = fn (tcp: rnet_tcp&, is_finished: bool);
+
+    rnet_tcp_set_no_delay :: fn (tcp: rnet_tcp&, enabled: bool) -> rnet_error;
+
+    rnet_tcp_set_read_buffer           :: fn (tcp: rnet_tcp&, read_buffer: void&, read_buffer_size: usize, read_buffer_capacity: usize);
+    rnet_tcp_get_read_buffer           :: fn (tcp: rnet_tcp&) -> void&;
+    rnet_tcp_get_read_buffer_size      :: fn (tcp: rnet_tcp&) -> usize;
+    rnet_tcp_get_read_buffer_capacity  :: fn (tcp: rnet_tcp&) -> usize;
+    rnet_tcp_get_read_buffer_as_string :: fn (tcp: rnet_tcp&) -> string;
+    rnet_tcp_clear_read_buffer         :: fn (tcp: rnet_tcp&);
+
+    rnet_tcp_get_current_write         :: fn (tcp: rnet_tcp&, dst_buffer: void&&, dst_buffer_size: usize&, bytes_written: usize&);
+
+    rnet_tcp_get_address  :: fn (tcp: rnet_tcp&) -> rnet_address&;
+    rnet_tcp_get_socket   :: fn (tcp: rnet_tcp&) -> rnet_socket;
+    rnet_tcp_get_listener :: fn (tcp: rnet_tcp&) -> rnet_tcp&;
+
+    rnet_tcp_is_writing    :: fn (tcp: rnet_tcp&) -> bool;
+    rnet_tcp_is_connected  :: fn (tcp: rnet_tcp&) -> bool;
+
+    rnet_tcp_get_index     :: fn (tcp: rnet_tcp&) -> usize;
+    rnet_tcp_set_user_data :: fn (tcp: rnet_tcp&, user_data: void&);
+    rnet_tcp_get_user_data :: fn (tcp: rnet_tcp&) -> void&;
+
+}
+
+export
+{
+    rnet_tcp :: struct
+    {
+        base                 : rnet_object&;
+        type                 : rnet_tcp_type;
+        address              : rnet_address;
+        state                : rnet_tcp_state;
+
+        error_fn             : rnet_tcp_error_fn&;
+        accept_fn            : rnet_tcp_accept_fn&;
+        connect_fn           : rnet_tcp_connect_fn&;
+        read_fn              : rnet_tcp_read_fn&;
+
+        read_buffer          : void&;
+        read_buffer_size     : usize;
+        read_buffer_capacity : usize;
+        writes               : rnet_object_write&;
+
+        listener             : rnet_tcp&;
+
+        user_data            : void&;
+
+    #if RNET_OPENSSL    
+        ssl : SSL&;
+        ctx : rnet_ssl_context&;
+    #end
+    }
+
+    rnet_tcp_type :: enum u8
+    {
+        RNET_TCP_NONE;
+        RNET_TCP_LISTENER;
+        RNET_TCP_LISTENER_CONNECTION;
+        RNET_TCP_CONNECTOR;
+    }
+
+    rnet_tcp_state :: enum u8
+    {
+        RNET_TCP_STATE_NONE;
+        RNET_TCP_STATE_IN_PROGRESS;
+        RNET_TCP_STATE_SUCCESS;
+        RNET_TCP_STATE_SSL_IN_PROGRESS;
+        RNET_TCP_STATE_SSL_SUCCESS;
+    }
+
+    rnet_tcp_internal_connect       :: fn (tcp: rnet_tcp&);
+    rnet_tcp_internal_accept        :: fn (listener: rnet_tcp&);
+    rnet_tcp_internal_accept_ssl    :: fn (tcp: rnet_tcp&);
+    rnet_tcp_internal_read          :: fn (tcp: rnet_tcp&);
+    rnet_tcp_internal_write         :: fn (tcp: rnet_tcp&);
+    rnet_tcp_is_connect_in_progress :: fn (tcp: rnet_tcp&) -> bool;
+
+    rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare write: rnet_object_write&);
+}
+
+import
+{
+    "std";
+    "rnet";
+}
+
+rnet_tcp_create :: fn (dst_tcp: rnet_tcp&&, error_fn: rnet_tcp_error_fn&) -> rnet_error
+{
+    socket: rnet_socket;
+    err: rnet_error = rnet_create_socket(socket&, RNET_SOCKET_STREAM, RNET_IPV4);
+    if (err != RNET_OK) return err;
+
+    obj: rnet_object& = rnet_pop_object();
+    if (obj == NULL) 
+    {
+        rnet_native_close_socket(socket) as void;
+        return RNET_ERROR_MAX_SOCKETS;
+    }
+
+    obj.type = RNET_OBJECT_TCP;
+
+    dst_tcp@ = obj.data.tcp&;
+    std_mem_set(dst_tcp@, size_of(rnet_tcp), 0);
+
+    dst_tcp.base        = obj;
+    dst_tcp.base.socket = socket;
+    dst_tcp.error_fn    = error_fn;
+
+    return RNET_OK;
+}
+
+rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
+{ 
+    if (tcp == NULL) return;
+
+#if RNET_OPENSSL
+    if (tcp.ssl != NULL) 
+    {
+        if (SSL_shutdown(tcp.ssl) == 0)
+        {
+            SSL_shutdown(tcp.ssl) as void;
+        }
+        SSL_free(tcp.ssl);
+        tcp.ssl = NULL;
+    }
+#end
+
+    if (tcp.base.socket != RNET_INVALID_SOCKET) 
+    {
+        rnet_native_close_socket(tcp.base.socket) as void;
+        tcp.base.socket = RNET_INVALID_SOCKET;
+    }
+
+    tcp.base.is_being_polled = false;
+    rnet_push_object(tcp.base);
+}
+
+rnet_tcp_set_no_delay :: fn (tcp: rnet_tcp&, enabled: bool) -> rnet_error
+{
+    opt: c_int = 0;
+    if (enabled) opt = 1;
+
+    if (rnet_native_set_socket_opt(tcp.base.socket, RNET_PROTOCOL_TCP, RNET_NATIVE_TCP_NO_DELAY, opt&, size_of(opt)) != 0)
+    {
+        return RNET_ERROR_TCP_SET_NO_DELAY;
+    }
+
+    return RNET_OK;
+}
+
+rnet_tcp_connect :: fn (tcp: rnet_tcp&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&)
+{
+    tcp.address              = address;
+    tcp.type                 = RNET_TCP_CONNECTOR;
+    tcp.read_buffer          = read_buffer;
+    tcp.read_buffer_size     = 0;
+    tcp.read_buffer_capacity = read_buffer_capacity;
+    tcp.read_fn              = read_fn;
+    tcp.connect_fn           = connect_fn;
+    tcp.state                = RNET_TCP_STATE_IN_PROGRESS;
+    rnet_tcp_internal_connect(tcp);
+}
+
+rnet_tcp_bind :: fn (tcp: rnet_tcp&, address: rnet_address) -> rnet_error
+{
+    return rnet_bind(tcp.base.socket, address&);
+}
+
+rnet_tcp_listen :: fn (tcp: rnet_tcp&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error
+{
+    tcp.type = RNET_TCP_LISTENER;
+    tcp.accept_fn = accept_fn;
+    if (rnet_native_listen(tcp.base.socket, backlog) != 0) return RNET_ERROR_TCP_LISTEN;
+
+    return RNET_OK;
+}
+
+rnet_tcp_bind_and_listen :: fn (tcp: rnet_tcp&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error
+{
+    err: rnet_error;
+
+    err = rnet_tcp_bind(tcp, address);
+    if (err != RNET_OK) return err;
+
+    err = rnet_tcp_listen(tcp, backlog, accept_fn);
+    if (err != RNET_OK) return err;
+    
+    return RNET_OK;
+}
+
+rnet_tcp_accept :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&)
+{     
+    tcp.error_fn             = error_fn;
+    tcp.read_buffer          = read_buffer;
+    tcp.read_buffer_size     = 0;
+    tcp.read_buffer_capacity = read_buffer_capacity;
+    tcp.read_fn              = read_fn;
+}
+
+rnet_tcp_write :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&)
+{
+    write: rnet_object_write& = rnet_pop_object_write();
+    if (write == NULL) 
+    {
+        tcp.error_fn(tcp, RNET_ERROR_WRITE_QUEUE_FULL);
+        return;
+    }
+
+    if (tcp.writes == NULL) 
+    {
+        tcp.writes = write; 
+    }
+    else
+    {
+        cur: rnet_object_write& = tcp.writes;
+        while (cur.next != NULL)
+        {
+            cur = cur.next; 
+        }
+        cur.next = write;
+    }
+
+    write.buffer        = buffer;
+    write.buffer_size   = buffer_size;
+    write.bytes_written = 0;
+    write.tcp_write_fn  = write_fn;
+}
+
+rnet_tcp_broadcast_write :: fn (listener: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&)
+{
+    rnet_for_each_tcp(tcp: rnet_tcp&)
+    {
+        if (tcp.type == RNET_TCP_LISTENER_CONNECTION && tcp.listener == listener)
+        {
+            rnet_tcp_write(tcp, buffer, buffer_size, write_fn);
+        }
+    }
+}
+
+rnet_tcp_clear_writes :: fn (tcp: rnet_tcp&)
+{
+    rnet_tcp_for_each_write(tcp, write: rnet_object_write&)
+    {
+        rnet_push_object_write(write);
+    }
+
+    tcp.writes = NULL;
+}
+
+rnet_tcp_set_read_buffer :: fn (tcp: rnet_tcp&, read_buffer: void&, read_buffer_size: usize, read_buffer_capacity: usize)
+{
+    tcp.read_buffer = read_buffer;
+    tcp.read_buffer_size = read_buffer_size;
+    tcp.read_buffer_capacity = read_buffer_capacity;
+}
+
+rnet_tcp_get_read_buffer :: fn (tcp: rnet_tcp&) -> void&
+{
+    return tcp.read_buffer;
+}
+
+rnet_tcp_get_read_buffer_size :: fn (tcp: rnet_tcp&) -> usize
+{
+    return tcp.read_buffer_size;
+}
+
+rnet_tcp_get_read_buffer_capacity  :: fn (tcp: rnet_tcp&) -> usize
+{
+    return tcp.read_buffer_capacity;
+}
+
+rnet_tcp_get_read_buffer_as_string :: fn (tcp: rnet_tcp&) -> string
+{
+    return string{tcp.read_buffer, tcp.read_buffer_size};
+}
+
+rnet_tcp_clear_read_buffer :: fn (tcp: rnet_tcp&)
+{
+    std_mem_set(tcp.read_buffer, tcp.read_buffer_capacity, 0);
+    tcp.read_buffer_size = 0;
+}
+
+rnet_tcp_get_current_write :: fn (tcp: rnet_tcp&, dst_buffer: void&&, dst_buffer_size: usize&, dst_bytes_written: usize&)
+{
+    w: rnet_object_write& = tcp.writes;
+    if (dst_buffer != NULL)        dst_buffer@        = w.buffer;
+    if (dst_buffer_size != NULL)   dst_buffer_size@   = w.buffer_size;
+    if (dst_bytes_written != NULL) dst_bytes_written@ = w.bytes_written;
+}
+
+rnet_tcp_get_address :: fn (tcp: rnet_tcp&) -> rnet_address&
+{
+    return tcp.address&;
+}
+
+rnet_tcp_get_socket :: fn (tcp: rnet_tcp&) -> rnet_socket
+{
+    return tcp.base.socket;
+}
+
+rnet_tcp_get_listener :: fn (tcp: rnet_tcp&) -> rnet_tcp&
+{
+    return tcp.listener;
+}
+
+rnet_tcp_is_connected :: fn (tcp: rnet_tcp&) -> bool
+{
+#if RNET_OPENSSL
+    if (tcp.ssl != NULL) return tcp.state == RNET_TCP_STATE_SSL_SUCCESS;
+#end
+
+    return tcp.state == RNET_TCP_STATE_SUCCESS;
+}
+
+rnet_tcp_is_connect_in_progress :: fn (tcp: rnet_tcp&) -> bool
+{
+    if (tcp.type != RNET_TCP_CONNECTOR) return false;
+
+#if RNET_OPENSSL
+    if (tcp.ssl != NULL) 
+    {
+        return 
+        tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS ||
+        tcp.state == RNET_TCP_STATE_IN_PROGRESS;
+    }
+#end
+
+    return tcp.state == RNET_TCP_STATE_IN_PROGRESS;
+}
+
+rnet_tcp_is_writing :: fn (tcp: rnet_tcp&) -> bool
+{
+    return tcp.writes != NULL;
+}
+
+rnet_tcp_ipv4_as_string :: fn (tcp: rnet_tcp&, buffer: void&) -> string
+{
+    return rnet_address_get_ipv4_as_string(tcp.address&, buffer);
+}
+
+rnet_tcp_get_index :: fn (tcp: rnet_tcp&) -> usize
+{
+    return (tcp.base - g_rnet.objects) as usize;
+}
+
+rnet_tcp_set_user_data :: fn (tcp: rnet_tcp&, user_data: void&)
+{
+    tcp.user_data = user_data;
+}
+
+rnet_tcp_get_user_data :: fn (tcp: rnet_tcp&) -> void&
+{
+    return tcp.user_data;
+}
+
+rnet_tcp_internal_connect :: fn (tcp: rnet_tcp&)
+{
+#if RNET_OPENSSL
+    if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS)
+    {
+        err: rnet_error = try_connect_ssl(tcp);
+        if (err == RNET_OK)
+        {
+            tcp.state = RNET_TCP_STATE_SSL_SUCCESS;
+            if (tcp.connect_fn != NULL) tcp.connect_fn(tcp);
+        }
+        else if (err != RNET_ERROR_TRY_AGAIN)
+        { 
+            tcp.error_fn(tcp, err);
+        }
+        return; 
+    }
+#end
+
+    res: c_int = rnet_native_connect(tcp.base.socket, rnet_address_get_data(tcp.address&), rnet_address_get_size(tcp.address&));
+
+#if OS_WINDOWS
+    if (res == -1 && rnet_get_native_error() == RNET_WSAEISCONN) res = 0; // we are already connected
+#end
+
+    if (res == 0) 
+    {
+        tcp.state = RNET_TCP_STATE_SUCCESS;
+
+#if RNET_OPENSSL
+        if (tcp.ssl != NULL) tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
+        return;
+#end
+
+        if (tcp.connect_fn != NULL) tcp.connect_fn(tcp);
+    }
+    else
+    {
+        if (rnet_socket_would_block()) return; 
+
+        tcp.state = RNET_TCP_STATE_NONE;
+        tcp.error_fn(tcp, RNET_ERROR_TCP_CONNECT);
+    }
+
+}
+
+rnet_tcp_internal_accept :: fn (listener: rnet_tcp&)
+{
+    tcp: rnet_tcp&;
+    error: rnet_error = rnet_tcp_create(tcp&, NULL);
+    if (error != RNET_OK) 
+    {
+        listener.error_fn(listener, error);
+        return;
+    }
+
+    addr: rnet_address = {};
+    addr_size: rnet_socket_size = size_of(addr.data.ipv4);
+    socket: rnet_socket = rnet_native_accept(listener.base.socket, addr.data.ipv4&, addr_size&);
+    if (socket == RNET_INVALID_SOCKET) 
+    {
+        listener.error_fn(listener, RNET_ERROR_TCP_ACCEPT);
+        return;
+    }
+    
+    tcp.type        = RNET_TCP_LISTENER_CONNECTION;
+    tcp.state       = RNET_TCP_STATE_SUCCESS;
+    tcp.base.socket = socket;
+    tcp.address     = addr;
+
+#if RNET_OPENSSL
+    if (listener.ctx != NULL)
+    {
+        tcp.ctx = listener.ctx;
+        tcp.ssl = SSL_new(listener.ctx);
+        res: c_int = SSL_set_fd(tcp.ssl, tcp.base.socket);
+        if (res == 0)
+        {
+            rnet_tcp_destroy(tcp);
+            return;
+        }
+
+        tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
+        tcp.accept_fn = listener.accept_fn;
+        return;
+    }
+#end
+    
+    tcp.listener = listener;
+    listener.accept_fn(tcp);
+}
+
+rnet_tcp_internal_accept_ssl :: fn (tcp: rnet_tcp&)
+{
+#if RNET_OPENSSL
+    err: rnet_error = try_accept_ssl(tcp);
+    if (err != RNET_OK) return;
+
+    tcp.state = RNET_TCP_STATE_SSL_SUCCESS;
+
+    tcp.accept_fn(tcp);
+#end
+}
+
+rnet_tcp_internal_read :: fn (tcp: rnet_tcp&)
+{
+    bytes_to_read   : usize = tcp.read_buffer_capacity - tcp.read_buffer_size;
+    tcp_read_buffer : void& = tcp.read_buffer + tcp.read_buffer_size;
+
+    if (bytes_to_read == 0) 
+    {
+        tcp.error_fn(tcp, RNET_ERROR_READ_BUFFER_FULL);
+        return;
+    }
+
+#if RNET_OPENSSL
+    if (tcp.ssl != NULL) 
+    {
+        bytes_read: usize;
+        err: rnet_error = try_read_ssl(tcp, tcp_read_buffer, bytes_to_read, bytes_read&);
+        if (err == RNET_OK)
+        {
+            tcp.read_buffer_size += bytes_read;
+            if (tcp.read_fn != NULL) tcp.read_fn(tcp);
+        }
+        else if (err != RNET_ERROR_TRY_AGAIN)
+        {
+            tcp.error_fn(tcp, err);
+        }
+        return;
+    }
+#end
+  
+    bytes_read: ssize = rnet_native_recv(tcp.base.socket, tcp_read_buffer, bytes_to_read, 0);
+    if (bytes_read > 0) 
+    {
+        tcp.read_buffer_size += bytes_read;
+        if (tcp.read_fn != NULL) tcp.read_fn(tcp);
+    }
+    else
+    {
+        tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED);
+    }    
+  
+}
+
+rnet_tcp_internal_write :: fn (tcp: rnet_tcp&)
+{ 
+    w: rnet_object_write& = tcp.writes;
+
+    tcp_write_buffer: void& = w.buffer + w.bytes_written;
+    bytes_to_write: usize = w.buffer_size - w.bytes_written;
+
+#if RNET_OPENSSL
+    if (tcp.ssl != NULL) 
+    {
+        bytes_written: usize = 0;
+        err: rnet_error = try_write_ssl(tcp, tcp_write_buffer, bytes_to_write, bytes_written&);
+        if (err == RNET_OK)
+        {
+            w.bytes_written += bytes_written; 
+            handle_current_write_buffer(tcp);
+        }
+        else if (err != RNET_ERROR_TRY_AGAIN)
+        {
+            tcp.error_fn(tcp, err);
+        } 
+        return;
+    }
+#end
+
+    bytes_written: ssize = rnet_native_send(tcp.base.socket, tcp_write_buffer, bytes_to_write, 0);
+    if (bytes_written > 0)
+    {
+        w.bytes_written += bytes_written; 
+        handle_current_write_buffer(tcp);
+    }
+    else
+    {    
+        tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED);
+    }
+}
+
+handle_current_write_buffer :: fn (tcp: rnet_tcp&)
+{
+    if (tcp.writes.bytes_written >= tcp.writes.buffer_size)
+    {
+        if (tcp.writes.tcp_write_fn != NULL) tcp.writes.tcp_write_fn(tcp, true);
+
+        next: rnet_object_write& = tcp.writes.next;
+        rnet_push_object_write(tcp.writes);
+        tcp.writes = next;
+    }
+    else
+    {
+        if (tcp.writes.tcp_write_fn != NULL) tcp.writes.tcp_write_fn(tcp, false);
+    }
+}
+
+rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare write: rnet_object_write&)
+{
+    cur: rnet_object_write& = tcp.writes;
+    while (cur != NULL)
+    {
+        write = cur;
+        yield;
+        cur = cur.next;
+    }
+}
+
+#if RNET_OPENSSL
+rnet_tcp_listen_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error
+{
+    tcp.ctx = ctx;
+    return rnet_tcp_listen(tcp, backlog, accept_fn);
+}
+
+rnet_tcp_bind_and_listen_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error
+{
+    err: rnet_error;
+
+    err = rnet_tcp_bind(tcp, address);
+    if (err != RNET_OK) return err;
+
+    err = rnet_tcp_listen_ssl(tcp, ctx, backlog, accept_fn);
+    if (err != RNET_OK) return err;
+    
+    return RNET_OK;
+}
+
+rnet_tcp_connect_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&) 
+{
+    if (tcp.ssl != NULL) SSL_free(tcp.ssl);
+
+    tcp.ctx = ctx;
+    tcp.ssl = SSL_new(ctx);
+    SSL_set_fd(tcp.ssl, tcp.base.socket) as void;
+
+    rnet_tcp_connect(tcp, address, read_buffer, read_buffer_capacity, read_fn, connect_fn);
+}
+
+try_connect_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
+{
+    res: c_int = SSL_connect(tcp.ssl);
+    if (res <= 0)
+    {
+        ssl_err: c_int = SSL_get_error(tcp.ssl, res);
+        switch (ssl_err)
+        {
+            SSL_ERROR_WANT_READ
+            SSL_ERROR_WANT_WRITE
+            {
+                return RNET_ERROR_TRY_AGAIN;
+            }
+            default
+            {
+                return RNET_ERROR_TCP_CLOSED;
+            }
+        }
+    }
+    else
+    {
+        return RNET_OK;
+    }
+
+    return RNET_ERROR_TRY_AGAIN;
+}
+
+try_read_ssl :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, dst_bytes_read: usize&) -> rnet_error
+{
+    err: rnet_error = read_ssl(tcp, buffer, buffer_size, dst_bytes_read);
+    ERR_clear_error();
+    return err;
+}
+
+read_ssl :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, dst_bytes_read: usize&) -> rnet_error
+{
+    res: c_int = SSL_read_ex(tcp.ssl, buffer, buffer_size, dst_bytes_read);
+    if (res <= 0)
+    {
+        ssl_err: c_int = SSL_get_error(tcp.ssl, res);
+        switch (ssl_err)
+        {
+            SSL_ERROR_WANT_READ
+            SSL_ERROR_WANT_WRITE
+            {
+                return RNET_ERROR_TRY_AGAIN;
+            }
+            default
+            {
+                return RNET_ERROR_TCP_CLOSED;
+            }
+        }
+    }
+    else
+    {
+        return RNET_OK;
+    }
+
+    return RNET_OK;
+}
+
+try_write_ssl :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, dst_bytes_written: usize&) -> rnet_error
+{
+    err: rnet_error = write_ssl(tcp, buffer, buffer_size, dst_bytes_written);
+    ERR_clear_error();
+    return err;
+}
+
+write_ssl :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, dst_bytes_written: usize&) -> rnet_error
+{
+    res: c_int = SSL_write_ex(tcp.ssl, buffer, buffer_size, dst_bytes_written);
+    if (res <= 0)
+    {
+        ssl_err: c_int = SSL_get_error(tcp.ssl, res);
+        switch (ssl_err)
+        {
+            SSL_ERROR_WANT_READ
+            SSL_ERROR_WANT_WRITE
+            {
+                return RNET_ERROR_TRY_AGAIN;
+            }
+            default
+            {
+                return RNET_ERROR_TCP_CLOSED;
+            }
+        }
+    }
+    else
+    {
+        return RNET_OK;
+    }
+
+    return RNET_OK;
+}
+
+try_accept_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
+{
+    err: rnet_error = accept_ssl(tcp);
+    ERR_clear_error();
+    return err;
+}
+
+accept_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
+{
+    res: c_int = SSL_accept(tcp.ssl);
+    if (res <= 0)
+    {
+        ssl_err: c_int = SSL_get_error(tcp.ssl, res);
+        switch (ssl_err)
+        {
+            SSL_ERROR_WANT_READ
+            SSL_ERROR_WANT_WRITE
+            {
+                return RNET_ERROR_TRY_AGAIN;
+            }
+            default
+            {
+                return RNET_ERROR_TCP_CLOSED;
+            }
+        }
+    }
+    else
+    {
+        return RNET_OK;
+    }
+
+    return RNET_ERROR_TRY_AGAIN;
+}
+#end
+
+

@@ -1,0 +1,129 @@
+export_library
+{
+    rnet_udp                     :: struct;
+
+    rnet_udp_create              :: fn (udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rnet_error;
+    rnet_udp_destroy             :: fn (udp: rnet_udp&);
+    rnet_udp_set_recv            :: fn (udp: rnet_udp&, read_buffer: void&, read_buffer_capacity: usize, recv_fn: rnet_udp_recv_fn&);
+    rnet_udp_bind                :: fn (udp: rnet_udp&, address: rnet_address) -> rnet_error;
+    rnet_udp_send                :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&);
+    rnet_udp_clear_datagrams     :: fn (udp: rnet_udp&);
+
+    rnet_udp_error_fn :: type_alias = fn (udp: rnet_udp&, error: rnet_error);
+    rnet_udp_recv_fn  :: type_alias = fn (udp: rnet_udp&, from_address: rnet_address, buffer: void&, buffer_size: usize);
+    rnet_udp_sent_fn  :: type_alias = fn (udp: rnet_udp&, to_address: rnet_address, buffer: void&, buffer_size: usize);
+}
+
+export
+{ 
+    rnet_udp :: struct
+    {
+        base                 : rnet_object&;
+        read_buffer          : void&;
+        read_buffer_capacity : usize;
+        writes               : rnet_object_write&;
+        error_fn             : rnet_udp_error_fn&;
+        recv_fn              : rnet_udp_recv_fn&;
+    }
+}
+
+import
+{
+    "std";
+    "rnet";
+}
+
+rnet_udp_create :: fn (dst_udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rnet_error
+{ 
+    socket: rnet_socket;
+    err: rnet_error = rnet_create_socket(socket&, RNET_SOCKET_DATAGRAM, RNET_IPV4);
+    if (err != RNET_OK) return err;
+
+    obj: rnet_object& = rnet_pop_object();
+    if (obj == NULL) 
+    {
+        rnet_native_close_socket(socket) as void;
+        return RNET_ERROR_MAX_SOCKETS;
+    }
+
+    obj.type = RNET_OBJECT_UDP;
+
+    dst_udp@ = obj.data.udp&;
+    std_mem_set(dst_udp@, size_of(rnet_udp), 0);
+
+    dst_udp.base     = obj;
+    dst_udp.base.socket   = socket;
+    dst_udp.error_fn = error_fn;
+
+    return RNET_OK;
+}
+
+rnet_udp_destroy :: fn (udp: rnet_udp&)
+{
+    rnet_native_close_socket(udp.base.socket) as void;
+    udp.base.socket = RNET_INVALID_SOCKET;
+    rnet_push_object(udp.base); 
+}
+
+rnet_udp_set_recv :: fn (udp: rnet_udp&, read_buffer: void&, read_buffer_capacity: usize, recv_fn: rnet_udp_recv_fn&)
+{ 
+    udp.read_buffer          = read_buffer;
+    udp.read_buffer_capacity = read_buffer_capacity;
+    udp.recv_fn              = recv_fn;
+}
+
+rnet_udp_bind :: fn (udp: rnet_udp&, address: rnet_address) -> rnet_error
+{
+    return rnet_bind(udp.base.socket, address&);
+}
+
+rnet_udp_send :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&)
+{
+    write: rnet_object_write& = rnet_pop_object_write();
+    if (write == NULL) 
+    {
+        udp.error_fn(udp, RNET_ERROR_WRITE_QUEUE_FULL);
+        return;
+    }
+
+    if (udp.writes == NULL) 
+    {
+        udp.writes = write; 
+    }
+    else
+    {
+        cur: rnet_object_write& = udp.writes;
+        while (cur.next != NULL)
+        {
+            cur = cur.next; 
+        }
+        cur.next = write;
+    }    
+
+    write.address     = address;
+    write.buffer      = buffer;
+    write.buffer_size = buffer_size;
+    write.udp_sent_fn = sent_fn;
+}
+
+rnet_udp_clear_datagrams :: fn (udp: rnet_udp&)
+{
+    rnet_udp_for_each_write(udp, write: rnet_object_write&)
+    {
+        rnet_push_object_write(write);
+    }
+
+    udp.writes = NULL;
+}
+
+rnet_udp_for_each_write :: it (udp: rnet_udp&, declare write: rnet_object_write&)
+{
+    cur: rnet_object_write& = udp.writes;
+    while (cur != NULL)
+    {
+        write = cur;
+        yield;
+        cur = cur.next;
+    }
+}
+
