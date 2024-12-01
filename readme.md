@@ -10,6 +10,10 @@ Proper docs aren't written yet but the examples show most of the functionality a
 
 [View the examples here](https://github.com/soulfoam/rnet-examples)
 
+## Notes
+
+IPv6 support isn't implemented fully yet, so it's not safe to use the rnet_address_ipv6 API.
+
 ## Usage flow
     
 ```
