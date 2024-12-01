@@ -8,6 +8,8 @@ RNET optionally supports SSL using OpenSSL as a dependency, simply use the targe
 
 Proper docs aren't written yet but the examples show most of the functionality and will get you started.
 
+[View the examples here](github.com/soulfoam/rnet-examples)
+
 ## Usage flow
     
 ```
