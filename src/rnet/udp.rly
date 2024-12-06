@@ -48,7 +48,7 @@ rnet_udp_create :: fn (dst_udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rne
 
     obj.type = RNET_OBJECT_UDP;
 
-    dst_udp@ = obj.data.udp&;
+    dst_udp@ = obj.udp&;
     std_mem_set(dst_udp@, size_of(rnet_udp), 0);
 
     dst_udp.base     = obj;

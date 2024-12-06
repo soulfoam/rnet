@@ -132,11 +132,11 @@ rnet_cleanup :: fn ()
     {
         if (obj.type == RNET_OBJECT_TCP)
         {
-            rnet_tcp_destroy(obj.data.tcp&);
+            rnet_tcp_destroy(obj.tcp&);
         }
         else if (obj.type == RNET_OBJECT_UDP)
         {
-            rnet_udp_destroy(obj.data.udp&);
+            rnet_udp_destroy(obj.udp&);
         }
     }
 
@@ -187,7 +187,7 @@ poll :: fn (timeout_ms: s32) -> rnet_error
 
         if (obj.type == RNET_OBJECT_TCP)
         {
-            tcp: rnet_tcp& = obj.data.tcp&;
+            tcp: rnet_tcp& = obj.tcp&;
 
             if (tcp.read_fn != NULL)
             {
@@ -208,7 +208,7 @@ poll :: fn (timeout_ms: s32) -> rnet_error
         }
         else if (obj.type == RNET_OBJECT_UDP)
         {
-            udp: rnet_udp& = obj.data.udp&;
+            udp: rnet_udp& = obj.udp&;
 
             if (udp.recv_fn != NULL)
             {
@@ -239,7 +239,7 @@ poll :: fn (timeout_ms: s32) -> rnet_error
         
         if (obj.type == RNET_OBJECT_TCP)
         {
-            tcp: rnet_tcp& = obj.data.tcp&;
+            tcp: rnet_tcp& = obj.tcp&;
 
             if (poll_fd.out_events & RNET_POLLERR > 0)
             {
@@ -284,7 +284,7 @@ poll :: fn (timeout_ms: s32) -> rnet_error
         }
         else if (obj.type == RNET_OBJECT_UDP)
         {
-            udp: rnet_udp& = obj.data.udp&;
+            udp: rnet_udp& = obj.udp&;
 
             if (poll_fd.out_events & RNET_POLLERR > 0)
             {
@@ -295,8 +295,8 @@ poll :: fn (timeout_ms: s32) -> rnet_error
                 if (poll_fd.out_events & RNET_POLLIN > 0)
                 {
                     from: rnet_address;
-                    from_size: rnet_socket_size = size_of(from.data.ipv4);
-                    res: c_int = rnet_native_recv_from(udp.base.socket, udp.read_buffer, udp.read_buffer_capacity, 0, from.data.ipv4&, from_size&); 
+                    from_size: rnet_socket_size = size_of(from.ipv4);
+                    res: c_int = rnet_native_recv_from(udp.base.socket, udp.read_buffer, udp.read_buffer_capacity, 0, from.ipv4&, from_size&); 
                     if (res < 0) 
                     {
                         udp.error_fn(udp, RNET_ERROR_RECV);
@@ -369,7 +369,7 @@ rnet_for_each_tcp :: it (declare tcp: rnet_tcp&)
     rnet_for_each_object(obj: rnet_object&)
     {
         if (obj.type != RNET_OBJECT_TCP) continue;
-        tcp = obj.data.tcp&;
+        tcp = obj.tcp&;
         yield;
     }
 }
@@ -379,7 +379,7 @@ rnet_for_each_udp :: it (declare udp: rnet_udp&)
     rnet_for_each_object(obj: rnet_object&)
     {
         if (obj.type != RNET_OBJECT_UDP) continue;
-        udp = obj.data.udp&;
+        udp = obj.udp&;
         yield;
     }
 }

@@ -36,13 +36,11 @@ export
     rnet_address :: struct
     {
         family : rnet_address_family;
-        data   : rnet_address_data;
-    }
-
-    rnet_address_data :: union
-    {
-        ipv4 : rnet_address_ipv4;
-        ipv6 : rnet_address_ipv6;
+        union
+        {
+            ipv4 : rnet_address_ipv4;
+            ipv6 : rnet_address_ipv6;
+        }
     }
 
     rnet_address_ipv4 :: struct
@@ -101,16 +99,16 @@ rnet_address_init_ipv4 :: fn (address: rnet_address&, ip: string, port: u16) -> 
     }
 
     address.family = RNET_IPV4;
-    address.data.ipv4.family = RNET_IPV4;
-    std_mem_copy(address.data.ipv4.addr&, ip_bytes, size_of(address.data.ipv4.addr));
-    address.data.ipv4.port = std_mem_convert_into_be_u16(port);
+    address.ipv4.family = RNET_IPV4;
+    std_mem_copy(address.ipv4.addr&, ip_bytes, size_of(address.ipv4.addr));
+    address.ipv4.port = std_mem_convert_into_be_u16(port);
 
     return RNET_OK;
 }
 
 rnet_address_get_ipv4_as_string :: fn (address: rnet_address&, buffer: void&) -> string
 {
-    s_addr: u32 = std_mem_convert_from_be_u32(address.data.ipv4.addr);
+    s_addr: u32 = std_mem_convert_from_be_u32(address.ipv4.addr);
     bytes: u8[4];
     bytes[0] = (s_addr & 0xFF)       as u8;
     bytes[1] = (s_addr >> 8  & 0xFF) as u8;
@@ -124,14 +122,14 @@ rnet_address_get_ipv4_as_string :: fn (address: rnet_address&, buffer: void&) ->
 
 rnet_address_get_ipv4 :: fn (address: rnet_address&) -> u32
 {
-    return address.data.ipv4.addr;
+    return address.ipv4.addr;
 }
 
 rnet_address_get_port :: fn (address: rnet_address&) -> u16
 {
-    if (address.family == RNET_IPV6) return std_mem_convert_from_be_u16(address.data.ipv6.port);
+    if (address.family == RNET_IPV6) return std_mem_convert_from_be_u16(address.ipv6.port);
 
-    return std_mem_convert_from_be_u16(address.data.ipv4.port);
+    return std_mem_convert_from_be_u16(address.ipv4.port);
 }
 
 rnet_address_get_family :: fn (address: rnet_address&) -> rnet_address_family
@@ -141,26 +139,26 @@ rnet_address_get_family :: fn (address: rnet_address&) -> rnet_address_family
 
 rnet_address_get_data :: fn (address: rnet_address&) -> void&
 {
-    if (address.family == RNET_IPV6) return address.data.ipv6&;
+    if (address.family == RNET_IPV6) return address.ipv6&;
 
-    return address.data.ipv4&;
+    return address.ipv4&;
 }
 
 rnet_address_get_size :: fn (address: rnet_address&) -> rnet_socket_size
 {
-    if (address.family == RNET_IPV6) return size_of(address.data.ipv6);
+    if (address.family == RNET_IPV6) return size_of(address.ipv6);
 
-    return size_of(address.data.ipv4);
+    return size_of(address.ipv4);
 }
 
 rnet_address_set_ipv4 :: fn (address: rnet_address&, ipv4: u32)
 {
-    address.data.ipv4.addr = ipv4;
+    address.ipv4.addr = ipv4;
 }
 
 rnet_address_set_port :: fn (address: rnet_address&, port: u16)
 {
-    address.data.ipv4.port = std_mem_convert_into_be_u16(port);
+    address.ipv4.port = std_mem_convert_into_be_u16(port);
 }
 
 rnet_address_resolve :: it (url: string, declare addr: rnet_address)
@@ -179,13 +177,13 @@ rnet_address_resolve :: it (url: string, declare addr: rnet_address)
             if (info.addrlen == size_of(rnet_address_ipv4))
             {
                 addr.family = RNET_IPV4;
-                addr.data.ipv4 = (info.addr as rnet_address_ipv4&)@;
+                addr.ipv4   = (info.addr as rnet_address_ipv4&)@;
                 yield;
             }
             else if (info.addrlen == size_of(rnet_address_ipv6))
             {
                 addr.family = RNET_IPV6;
-                addr.data.ipv6 = (info.addr as rnet_address_ipv6&)@;
+                addr.ipv6   = (info.addr as rnet_address_ipv6&)@;
                 yield;
             }
         }
