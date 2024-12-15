@@ -94,13 +94,15 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
     object_writes_size       : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes@);
     object_writes_stack_size : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes_stack_top);
 
+    poll_fds_size : usize = g_rnet.max_objects * size_of(rnet_poll_fd);
+
     if (options.mem_alloc_fn != NULL)
     {
         g_rnet.objects             = options.mem_alloc_fn(objects_size, options.user_data);
         g_rnet.objects_stack       = options.mem_alloc_fn(objects_stack_size, options.user_data);
         g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.user_data);
         g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.user_data);
-        g_rnet.poll_fds            = options.mem_alloc_fn(g_rnet.max_objects, options.user_data);
+        g_rnet.poll_fds            = options.mem_alloc_fn(poll_fds_size, options.user_data);
     }
     else
     {
@@ -108,7 +110,7 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
         g_rnet.objects_stack       = std_mem_alloc(objects_stack_size);
         g_rnet.object_writes       = std_mem_alloc(object_writes_size);
         g_rnet.object_writes_stack = std_mem_alloc(object_writes_stack_size);
-        g_rnet.poll_fds            = std_mem_alloc(g_rnet.max_objects);
+        g_rnet.poll_fds            = std_mem_alloc(poll_fds_size);
     }
 
     for_each_object_reverse(obj: rnet_object&)
@@ -181,6 +183,7 @@ poll :: fn (timeout_ms: s32) -> rnet_error
         obj.is_being_polled = true;
 
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
+
         poll_fd.socket     = obj.socket;
         poll_fd.in_events  = 0;
         poll_fd.out_events = 0; 
