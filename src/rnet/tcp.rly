@@ -7,7 +7,7 @@ export_library
     rnet_tcp_bind                :: fn (tcp: rnet_tcp&, address: rnet_address) -> rnet_error;
     rnet_tcp_listen              :: fn (tcp: rnet_tcp&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
     rnet_tcp_bind_and_listen     :: fn (tcp: rnet_tcp&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
-    rnet_tcp_accept              :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&);
+    rnet_tcp_accept              :: fn (new_tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&);
     rnet_tcp_connect             :: fn (tcp: rnet_tcp&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&);
     rnet_tcp_write               :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&);
     rnet_tcp_broadcast_write     :: fn (listener: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&);
@@ -34,7 +34,8 @@ export_library
     rnet_tcp_get_read_buffer_as_string :: fn (tcp: rnet_tcp&) -> string;
     rnet_tcp_clear_read_buffer         :: fn (tcp: rnet_tcp&);
 
-    rnet_tcp_get_current_write         :: fn (tcp: rnet_tcp&, dst_buffer: void&&, dst_buffer_size: usize&, bytes_written: usize&);
+    rnet_tcp_for_each_write    :: it (tcp: rnet_tcp&, declare buffer: void&, declare buffer_size: usize, declare bytes_written: usize);
+    rnet_tcp_get_current_write :: fn (tcp: rnet_tcp&, dst_buffer: void&&, dst_buffer_size: usize&, bytes_written: usize&);
 
     rnet_tcp_get_address  :: fn (tcp: rnet_tcp&) -> rnet_address&;
     rnet_tcp_get_socket   :: fn (tcp: rnet_tcp&) -> rnet_socket;
@@ -102,7 +103,7 @@ export
     rnet_tcp_internal_write         :: fn (tcp: rnet_tcp&);
     rnet_tcp_is_connect_in_progress :: fn (tcp: rnet_tcp&) -> bool;
 
-    rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare write: rnet_object_write&);
+    rnet_tcp_for_each_write_object :: it (tcp: rnet_tcp&, declare write: rnet_object_write&);
 }
 
 import
@@ -215,13 +216,13 @@ rnet_tcp_bind_and_listen :: fn (tcp: rnet_tcp&, address: rnet_address, backlog: 
     return RNET_OK;
 }
 
-rnet_tcp_accept :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&)
+rnet_tcp_accept :: fn (new_tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&)
 {     
-    tcp.error_fn             = error_fn;
-    tcp.read_buffer          = read_buffer;
-    tcp.read_buffer_size     = 0;
-    tcp.read_buffer_capacity = read_buffer_capacity;
-    tcp.read_fn              = read_fn;
+    new_tcp.error_fn             = error_fn;
+    new_tcp.read_buffer          = read_buffer;
+    new_tcp.read_buffer_size     = 0;
+    new_tcp.read_buffer_capacity = read_buffer_capacity;
+    new_tcp.read_fn              = read_fn;
 }
 
 rnet_tcp_write :: fn (tcp: rnet_tcp&, buffer: void&, buffer_size: usize, write_fn: rnet_tcp_write_fn&)
@@ -266,7 +267,7 @@ rnet_tcp_broadcast_write :: fn (listener: rnet_tcp&, buffer: void&, buffer_size:
 
 rnet_tcp_clear_writes :: fn (tcp: rnet_tcp&)
 {
-    rnet_tcp_for_each_write(tcp, write: rnet_object_write&)
+    rnet_tcp_for_each_write_object(tcp, write: rnet_object_write&)
     {
         rnet_push_object_write(write);
     }
@@ -579,7 +580,20 @@ handle_current_write_buffer :: fn (tcp: rnet_tcp&)
     }
 }
 
-rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare write: rnet_object_write&)
+rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare buffer: void&, declare buffer_size: usize, declare bytes_written: usize)
+{
+    cur: rnet_object_write& = tcp.writes;
+    while (cur != NULL)
+    {
+        buffer        = cur.buffer;
+        buffer_size   = cur.buffer_size;
+        bytes_written = cur.bytes_written;
+        yield;
+        cur = cur.next;
+    }
+}
+
+rnet_tcp_for_each_write_object :: it (tcp: rnet_tcp&, declare write: rnet_object_write&)
 {
     cur: rnet_object_write& = tcp.writes;
     while (cur != NULL)
@@ -589,6 +603,7 @@ rnet_tcp_for_each_write :: it (tcp: rnet_tcp&, declare write: rnet_object_write&
         cur = cur.next;
     }
 }
+
 
 #if RNET_OPENSSL
 rnet_tcp_listen_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error
