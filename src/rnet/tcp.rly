@@ -25,6 +25,9 @@ export_library
     rnet_tcp_read_fn     :: type_alias = fn (tcp: rnet_tcp&);
     rnet_tcp_write_fn    :: type_alias = fn (tcp: rnet_tcp&, is_finished: bool);
 
+    rnet_tcp_set_read_callback  :: fn (tcp: rnet_tcp&, read_fn: rnet_tcp_read_fn&);
+    rnet_tcp_set_error_callback :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&);
+
     rnet_tcp_set_no_delay :: fn (tcp: rnet_tcp&, enabled: bool) -> rnet_error;
 
     rnet_tcp_set_read_buffer           :: fn (tcp: rnet_tcp&, read_buffer: void&, read_buffer_size: usize, read_buffer_capacity: usize);
@@ -161,6 +164,16 @@ rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
 
     tcp.base.is_being_polled = false;
     rnet_push_object(tcp.base);
+}
+
+rnet_tcp_set_read_callback :: fn (tcp: rnet_tcp&, read_fn: rnet_tcp_read_fn&)
+{
+    tcp.read_fn = read_fn;
+}
+
+rnet_tcp_set_error_callback :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&)
+{
+    tcp.error_fn = error_fn;
 }
 
 rnet_tcp_set_no_delay :: fn (tcp: rnet_tcp&, enabled: bool) -> rnet_error
