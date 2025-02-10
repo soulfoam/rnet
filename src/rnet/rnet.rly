@@ -98,11 +98,11 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
 
     if (options.mem_alloc_fn != NULL)
     {
-        g_rnet.objects             = options.mem_alloc_fn(objects_size, options.user_data);
-        g_rnet.objects_stack       = options.mem_alloc_fn(objects_stack_size, options.user_data);
-        g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.user_data);
-        g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.user_data);
-        g_rnet.poll_fds            = options.mem_alloc_fn(poll_fds_size, options.user_data);
+        g_rnet.objects             = options.mem_alloc_fn(objects_size, options.mem_user_data);
+        g_rnet.objects_stack       = options.mem_alloc_fn(objects_stack_size, options.mem_user_data);
+        g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.mem_user_data);
+        g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.mem_user_data);
+        g_rnet.poll_fds            = options.mem_alloc_fn(poll_fds_size, options.mem_user_data);
     }
     else
     {
