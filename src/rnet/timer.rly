@@ -1,0 +1,80 @@
+export_library
+{
+    rnet_timer               :: struct;
+    rnet_timer_create        :: fn (time_ms: u64, callback: rnet_timer_fn&, user_data: void&) -> rnet_timer&;
+    rnet_timer_destroy       :: fn (timer: rnet_timer&);
+    rnet_timer_start         :: fn (timer: rnet_timer&);
+    rnet_timer_stop          :: fn (timer: rnet_timer&);
+    rnet_timer_get_user_data :: fn (timer: rnet_timer&) -> void&;
+
+    rnet_timer_fn :: type_alias = fn (timer: rnet_timer&);
+}
+
+export
+{
+    rnet_timer :: struct
+    {
+        time_ms   : u64;
+        start     : u64;
+        callback  : rnet_timer_fn&;
+        user_data : void&;
+        next      : rnet_timer&;
+    }
+}
+
+import
+{
+    "rnet/rnet";
+    "rnet/native";
+}
+
+rnet_timer_create :: fn (time_ms: u64, callback: rnet_timer_fn&, user_data: void&) -> rnet_timer&
+{
+    timer: rnet_timer& = rnet_pop_timer();
+    timer.time_ms      = time_ms;
+    timer.callback     = callback;
+    timer.user_data    = user_data;
+    timer.next         = NULL;
+
+    return timer;
+}
+
+rnet_timer_destroy :: fn (timer: rnet_timer&)
+{
+    rnet_timer_stop(timer);
+    rnet_push_timer(timer); 
+}
+
+rnet_timer_start :: fn (timer: rnet_timer&)
+{
+    timer.start = rnet_time_now_ms();
+
+    timer.next = g_rnet.active_timers_head;
+    g_rnet.active_timers_head = timer;
+}
+
+rnet_timer_stop :: fn (timer: rnet_timer&)
+{
+    if (g_rnet.active_timers_head == timer) 
+    {
+        g_rnet.active_timers_head = timer.next;
+        return;
+    }
+
+    prev: rnet_timer& = g_rnet.active_timers_head;
+    while (prev.next != NULL) 
+    {
+        if (prev.next == timer) 
+        {
+            prev.next = timer.next;
+            return;
+        }
+        prev = prev.next;
+    }
+}
+
+rnet_timer_get_user_data :: fn (timer: rnet_timer&) -> void&
+{
+    return timer.user_data;
+}
+

@@ -1,5 +1,8 @@
 export_library
 {
+    rnet_time_now_us :: fn () -> u64;
+    rnet_time_now_ms :: fn () -> u64;
+
 #if OS_WINDOWS
 
 #if ARCH_X64
@@ -21,6 +24,8 @@ export_library
 
 export
 {
+    rnet_time_setup  :: fn ();
+
 #if OS_WINDOWS
     RNET_POLLRDNORM  :: define c_int = 0x0100;
     RNET_POLLRDBAND  :: define c_int = 0x0200;
@@ -88,12 +93,12 @@ export
     } 
 
 #else
-    RNET_POLLIN   :: define c_int = 0x001;	// There is data to read.  */
-    RNET_POLLPRI  :: define c_int = 0x002;	// There is urgent data to read.  */
-    RNET_POLLOUT  :: define c_int = 0x004;	// Writing now will not block.  */
-    RNET_POLLERR  :: define c_int = 0x008;	// Error condition.  */
-    RNET_POLLHUP  :: define c_int = 0x010;	// Hung up.  */
-    RNET_POLLNVAL :: define c_int = 0x020;	// Invalid polling request.  */
+    RNET_POLLIN   :: define c_int = 0x001;	// There is data to read.
+    RNET_POLLPRI  :: define c_int = 0x002;	// There is urgent data to read.
+    RNET_POLLOUT  :: define c_int = 0x004;	// Writing now will not block. 
+    RNET_POLLERR  :: define c_int = 0x008;	// Error condition. 
+    RNET_POLLHUP  :: define c_int = 0x010;	// Hung up. 
+    RNET_POLLNVAL :: define c_int = 0x020;	// Invalid polling request.
 
     RNET_SOL_SOCKET    :: define u8 = 1;
     RNET_SO_REUSE_ADDR :: define u8 = 2;
@@ -167,4 +172,47 @@ export
 import
 {
     "rnet/address";
+}
+
+linux_timespec :: struct
+{
+    tv_sec  : linux_time64;
+    tv_nsec : linux_time64;
+}
+linux_clock_gettime   :: fn (id: linux_clockid, time: linux_timespec&) -> c_int = extern "clock_gettime";
+linux_clock_getres    :: fn (id: linux_clockid, time: linux_timespec&) -> c_int = extern "clock_getres";
+linux_time64          :: type_alias = s64;
+linux_clockid         :: type_alias = s32;
+LINUX_CLOCK_MONOTONIC :: define c_int = 1;
+
+windows_query_performance_frequency :: fn (dst: s64&) -> bool = extern "QueryPerformanceFrequency";
+windows_query_performance_counter   :: fn (dst: s64&) -> bool = extern "QueryPerformanceCounter";
+
+windows_rate : s64;
+
+rnet_time_setup :: fn ()
+{
+#if OS_WINDOWS
+    windows_query_performance_frequency(windows_rate&) as void;
+#end
+}
+
+rnet_time_now_us :: fn () -> u64
+{
+#if OS_LINUX
+    spec: linux_timespec;
+    linux_clock_gettime(LINUX_CLOCK_MONOTONIC, spec&) as void;
+    now: u64 = (spec.tv_sec * 1000000) + (spec.tv_nsec / 1000);
+    return now;
+
+#elif OS_WINDOWS
+    now: s64;
+    windows_query_performance_counter(now&) as void;
+    return ((1000000 * now) / windows_rate) as u64;
+#end
+}
+
+rnet_time_now_ms :: fn () -> u64
+{
+    return rnet_time_now_us() / 1000;
 }

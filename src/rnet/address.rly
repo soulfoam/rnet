@@ -174,18 +174,15 @@ rnet_address_resolve :: it (url: string, declare addr: rnet_address)
     {
         if (info.family == RNET_IPV4)
         {
-            if (info.addrlen == size_of(rnet_address_ipv4))
-            {
-                addr.family = RNET_IPV4;
-                addr.ipv4   = (info.addr as rnet_address_ipv4&)@;
-                yield;
-            }
-            else if (info.addrlen == size_of(rnet_address_ipv6))
-            {
-                addr.family = RNET_IPV6;
-                addr.ipv6   = (info.addr as rnet_address_ipv6&)@;
-                yield;
-            }
+            addr.family = RNET_IPV4;
+            addr.ipv4   = (info.addr as rnet_address_ipv4&)@;
+            yield;
+        }
+        else if (info.family == RNET_IPV6)
+        {
+            addr.family = RNET_IPV6;
+            addr.ipv6   = (info.addr as rnet_address_ipv6&)@;
+            yield;
         }
         info = info.next;
     }
