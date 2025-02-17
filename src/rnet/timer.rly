@@ -17,6 +17,7 @@ export
         time_ms   : u64;
         start     : u64;
         callback  : rnet_timer_fn&;
+        is_active : bool;
         user_data : void&;
         next      : rnet_timer&;
     }
@@ -33,6 +34,7 @@ rnet_timer_create :: fn (time_ms: u64, callback: rnet_timer_fn&, user_data: void
     timer: rnet_timer& = rnet_pop_timer();
     timer.time_ms      = time_ms;
     timer.callback     = callback;
+    timer.is_active    = false;
     timer.user_data    = user_data;
     timer.next         = NULL;
 
@@ -47,7 +49,10 @@ rnet_timer_destroy :: fn (timer: rnet_timer&)
 
 rnet_timer_start :: fn (timer: rnet_timer&)
 {
+    if (timer.is_active) return;
+
     timer.start = rnet_time_now_ms();
+    timer.is_active = true;
 
     timer.next = g_rnet.active_timers_head;
     g_rnet.active_timers_head = timer;
@@ -55,6 +60,10 @@ rnet_timer_start :: fn (timer: rnet_timer&)
 
 rnet_timer_stop :: fn (timer: rnet_timer&)
 {
+    if (!timer.is_active) return;
+
+    timer.is_active = false;
+
     if (g_rnet.active_timers_head == timer) 
     {
         g_rnet.active_timers_head = timer.next;
