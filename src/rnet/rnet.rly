@@ -298,44 +298,52 @@ poll :: fn (no_timeout: bool) -> rnet_error
         {
             tcp: rnet_tcp& = obj.tcp&;
 
-            if (poll_fd.out_events & RNET_POLLERR > 0)
+            switch (tcp.type)
             {
-                tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED); 
-            }
-            else
-            {
-                switch (tcp.type)
+                RNET_TCP_NONE{}
+                RNET_TCP_LISTENER
+                { 
+                    if (poll_fd.out_events & RNET_POLLIN > 0) 
+                    {
+                        rnet_tcp_internal_accept(tcp);
+                    }
+                }
+                RNET_TCP_LISTENER_CONNECTION
                 {
-                    RNET_TCP_NONE{}
-                    RNET_TCP_LISTENER
-                    { 
-                        if (poll_fd.out_events & RNET_POLLIN > 0) rnet_tcp_internal_accept(tcp);
-                    }
-                    RNET_TCP_LISTENER_CONNECTION
+                    if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS && poll_fd.out_events != 0)
                     {
-                        if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS && poll_fd.out_events != 0)
+                        rnet_tcp_internal_accept_ssl(tcp);
+                    }
+                    else
+                    {
+                        if (poll_fd.out_events & RNET_POLLIN > 0)  
                         {
-                            rnet_tcp_internal_accept_ssl(tcp);
+                            rnet_tcp_internal_read(tcp);
                         }
-                        else
+                        if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0) 
                         {
-                            if (poll_fd.out_events & RNET_POLLIN > 0)  rnet_tcp_internal_read(tcp);
-                            if (poll_fd.out_events & RNET_POLLOUT > 0) rnet_tcp_internal_write(tcp);
+                            rnet_tcp_internal_write(tcp);
                         }
                     }
-                    RNET_TCP_CONNECTOR
+                }
+                RNET_TCP_CONNECTOR
+                {
+                    if (rnet_tcp_is_connect_in_progress(tcp) && poll_fd.out_events != 0)
                     {
-                        if (rnet_tcp_is_connect_in_progress(tcp) && poll_fd.out_events != 0)
+                        rnet_tcp_internal_connect(tcp);
+                    }
+                    else if (rnet_tcp_is_connected(tcp))
+                    {
+                        if (poll_fd.out_events & RNET_POLLIN > 0)  
                         {
-                            rnet_tcp_internal_connect(tcp);
+                            rnet_tcp_internal_read(tcp);
                         }
-                        else if (rnet_tcp_is_connected(tcp))
+                        if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0) 
                         {
-                            if (poll_fd.out_events & RNET_POLLIN > 0)  rnet_tcp_internal_read(tcp);
-                            if (poll_fd.out_events & RNET_POLLOUT > 0) rnet_tcp_internal_write(tcp);
+                            rnet_tcp_internal_write(tcp);
                         }
+                    }
 
-                    }
                 }
             }
         }
@@ -343,47 +351,41 @@ poll :: fn (no_timeout: bool) -> rnet_error
         {
             udp: rnet_udp& = obj.udp&;
 
-            if (poll_fd.out_events & RNET_POLLERR > 0)
+            if (poll_fd.out_events & RNET_POLLIN > 0)
             {
-                udp.error_fn(udp, RNET_ERROR_UDP); 
-            }
-            else
-            {
-                if (poll_fd.out_events & RNET_POLLIN > 0)
+                from: rnet_address;
+                from_size: rnet_socket_size = size_of(from.ipv4);
+                res: c_int = rnet_native_recv_from(udp.base.socket, udp.read_buffer, udp.read_buffer_capacity, 0, from.ipv4&, from_size&); 
+                if (res < 0) 
                 {
-                    from: rnet_address;
-                    from_size: rnet_socket_size = size_of(from.ipv4);
-                    res: c_int = rnet_native_recv_from(udp.base.socket, udp.read_buffer, udp.read_buffer_capacity, 0, from.ipv4&, from_size&); 
+                    udp.error_fn(udp, RNET_ERROR_RECV);
+                }
+                else
+                {
+                    udp.recv_fn(udp, from, udp.read_buffer, res);
+                    std_mem_set(udp.read_buffer, udp.read_buffer_capacity, 0);
+                }
+            }
+            
+            // We check INVALID_SOCKET because there may have been an error/close above ^
+            if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0)
+            {
+                write: rnet_object_write& = udp.writes;
+                if (write != NULL)
+                {
+                    buf: u8[RNET_IPV4_STRING_SIZE];
+                    res: c_int = rnet_native_send_to(udp.base.socket, write.buffer, write.buffer_size, 0, rnet_address_get_data(write.address&), rnet_address_get_size(write.address&)); 
                     if (res < 0) 
                     {
-                        udp.error_fn(udp, RNET_ERROR_RECV);
+                        udp.error_fn(udp, RNET_ERROR_SEND);
                     }
                     else
                     {
-                        udp.recv_fn(udp, from, udp.read_buffer, res);
-                        std_mem_set(udp.read_buffer, udp.read_buffer_capacity, 0);
-                    }
-                }
+                        write.udp_sent_fn(udp, write.address, write.buffer, res);
 
-                if (poll_fd.out_events & RNET_POLLOUT > 0)
-                {
-                    write: rnet_object_write& = udp.writes;
-                    if (write != NULL)
-                    {
-                        buf: u8[RNET_IPV4_STRING_SIZE];
-                        res: c_int = rnet_native_send_to(udp.base.socket, write.buffer, write.buffer_size, 0, rnet_address_get_data(write.address&), rnet_address_get_size(write.address&)); 
-                        if (res < 0) 
-                        {
-                            udp.error_fn(udp, RNET_ERROR_SEND);
-                        }
-                        else
-                        {
-                            write.udp_sent_fn(udp, write.address, write.buffer, res);
-
-                            next: rnet_object_write& = udp.writes.next;
-                            rnet_push_object_write(udp.writes);
-                            udp.writes = next;
-                        }
+                        next: rnet_object_write& = udp.writes.next;
+                        rnet_push_object_write(udp.writes);
+                        udp.writes = next;
                     }
                 }
             }
