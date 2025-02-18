@@ -322,10 +322,21 @@ rnet_tcp_clear_read_buffer :: fn (tcp: rnet_tcp&)
 
 rnet_tcp_get_current_write :: fn (tcp: rnet_tcp&, dst_buffer: void&&, dst_buffer_size: usize&, dst_bytes_written: usize&)
 {
+    buffer        : void& = NULL;
+    buffer_size   : usize = 0;
+    bytes_written : usize = 0;
+
     w: rnet_object_write& = tcp.writes;
-    if (dst_buffer != NULL)        dst_buffer@        = w.buffer;
-    if (dst_buffer_size != NULL)   dst_buffer_size@   = w.buffer_size;
-    if (dst_bytes_written != NULL) dst_bytes_written@ = w.bytes_written;
+    if (w != NULL)
+    {
+        buffer = w.buffer;
+        buffer_size = w.buffer_size;
+        bytes_written = w.bytes_written;
+    }
+
+    if (dst_buffer != NULL)        dst_buffer@        = buffer;
+    if (dst_buffer_size != NULL)   dst_buffer_size@   = buffer_size;
+    if (dst_bytes_written != NULL) dst_bytes_written@ = bytes_written;
 }
 
 rnet_tcp_get_address :: fn (tcp: rnet_tcp&) -> rnet_address&
@@ -542,6 +553,7 @@ rnet_tcp_internal_read :: fn (tcp: rnet_tcp&)
 rnet_tcp_internal_write :: fn (tcp: rnet_tcp&)
 { 
     w: rnet_object_write& = tcp.writes;
+    if (w == NULL) return; // Nothing to write
 
     tcp_write_buffer: void& = w.buffer + w.bytes_written;
     bytes_to_write: usize = w.buffer_size - w.bytes_written;
