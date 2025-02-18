@@ -162,7 +162,6 @@ rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
         tcp.base.socket = RNET_INVALID_SOCKET;
     }
 
-    tcp.base.is_being_polled = false;
     rnet_push_object(tcp.base);
 }
 

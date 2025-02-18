@@ -229,8 +229,6 @@ poll :: fn (no_timeout: bool) -> rnet_error
     count: usize = 0;    
     rnet_for_each_object(obj: rnet_object&)
     {
-        obj.is_being_polled = true;
-
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
 
         poll_fd.socket     = obj.socket;
@@ -294,9 +292,6 @@ poll :: fn (no_timeout: bool) -> rnet_error
 
     rnet_for_each_object(obj: rnet_object&)
     {
-        if (!obj.is_being_polled) continue;
-        obj.is_being_polled = false;
-
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
         
         if (obj.type == RNET_OBJECT_TCP)
