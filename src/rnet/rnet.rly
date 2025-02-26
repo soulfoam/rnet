@@ -112,46 +112,22 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
     g_rnet.objects_stack_top       = USIZE_MAX_VALUE;
     g_rnet.object_writes_stack_top = USIZE_MAX_VALUE;
     g_rnet.user_data               = options.user_data;
+    g_rnet.mem_dealloc_fn          = options.mem_dealloc_fn;
+    g_rnet.mem_user_data           = options.mem_user_data;
 
-    objects_size       : usize = g_rnet.max_objects * size_of(g_rnet.objects@);
-    objects_stack_size : usize = g_rnet.max_objects * size_of(g_rnet.objects_stack_top);
+    alloc_fn: rnet_alloc_fn& = options.mem_alloc_fn;
+    if (alloc_fn == NULL) alloc_fn = setup_alloc&;
 
-    object_writes_size       : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes@);
-    object_writes_stack_size : usize = g_rnet.max_object_writes * size_of(g_rnet.object_writes_stack_top);
-
-    timers_size       : usize = g_rnet.max_timers * size_of(g_rnet.timers@);
-    timers_stack_size : usize = g_rnet.max_timers * size_of(g_rnet.timers_stack_top);
-
-    poll_fds_size     : usize = g_rnet.max_objects * size_of(rnet_poll_fd);
-    poll_obj_ids_size : usize = g_rnet.max_objects * size_of(rnet_object_id);
-
-    if (options.mem_alloc_fn != NULL)
+    g_rnet.objects             = alloc_fn(g_rnet.max_objects * size_of(g_rnet.objects@), g_rnet.mem_user_data);
+    g_rnet.objects_stack       = alloc_fn(g_rnet.max_objects * size_of(g_rnet.objects_stack_top), g_rnet.mem_user_data);
+    g_rnet.object_writes       = alloc_fn(g_rnet.max_object_writes * size_of(g_rnet.object_writes@), g_rnet.mem_user_data);
+    g_rnet.object_writes_stack = alloc_fn(g_rnet.max_object_writes * size_of(g_rnet.object_writes_stack_top), g_rnet.mem_user_data);
+    g_rnet.poll_fds            = alloc_fn(g_rnet.max_objects * size_of(rnet_poll_fd), g_rnet.mem_user_data);
+    g_rnet.poll_obj_ids        = alloc_fn(g_rnet.max_objects * size_of(rnet_object_id), g_rnet.mem_user_data);
+    if (g_rnet.max_timers > 0)
     {
-        g_rnet.objects             = options.mem_alloc_fn(objects_size, options.mem_user_data);
-        g_rnet.objects_stack       = options.mem_alloc_fn(objects_stack_size, options.mem_user_data);
-        g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.mem_user_data);
-        g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.mem_user_data);
-        g_rnet.poll_fds            = options.mem_alloc_fn(poll_fds_size, options.mem_user_data);
-        g_rnet.poll_obj_ids        = options.mem_alloc_fn(poll_obj_ids_size, options.mem_user_data);
-        if (g_rnet.max_timers > 0)
-        {
-            g_rnet.timers              = options.mem_alloc_fn(timers_size, options.mem_user_data);
-            g_rnet.timers_stack        = options.mem_alloc_fn(timers_stack_size, options.mem_user_data);
-        }
-    }
-    else
-    {
-        g_rnet.objects             = std_mem_alloc(objects_size);
-        g_rnet.objects_stack       = std_mem_alloc(objects_stack_size);
-        g_rnet.object_writes       = std_mem_alloc(object_writes_size);
-        g_rnet.object_writes_stack = std_mem_alloc(object_writes_stack_size);
-        g_rnet.poll_fds            = std_mem_alloc(poll_fds_size);
-        g_rnet.poll_obj_ids        = std_mem_alloc(poll_obj_ids_size);
-        if (g_rnet.max_timers > 0)
-        {
-            g_rnet.timers              = std_mem_alloc(timers_size);
-            g_rnet.timers_stack        = std_mem_alloc(timers_stack_size);
-        }
+        g_rnet.timers       = alloc_fn(g_rnet.max_timers * size_of(g_rnet.timers@), g_rnet.mem_user_data);
+        g_rnet.timers_stack = alloc_fn(g_rnet.max_timers * size_of(g_rnet.timers_stack_top), g_rnet.mem_user_data);
     }
 
     for_each_object_reverse(obj: rnet_object&)
@@ -190,39 +166,35 @@ rnet_cleanup :: fn ()
         }
     }
 
-    if (g_rnet.mem_dealloc_fn != NULL)
-    { 
-        g_rnet.mem_dealloc_fn(g_rnet.objects, g_rnet.mem_user_data);
-        g_rnet.mem_dealloc_fn(g_rnet.objects_stack, g_rnet.mem_user_data);
-        g_rnet.mem_dealloc_fn(g_rnet.object_writes, g_rnet.mem_user_data);
-        g_rnet.mem_dealloc_fn(g_rnet.object_writes_stack, g_rnet.mem_user_data);
-        g_rnet.mem_dealloc_fn(g_rnet.poll_fds, g_rnet.mem_user_data);
-        g_rnet.mem_dealloc_fn(g_rnet.poll_obj_ids, g_rnet.mem_user_data);
-        if (g_rnet.max_timers > 0)
-        {
-            g_rnet.mem_dealloc_fn(g_rnet.timers, g_rnet.mem_user_data);
-            g_rnet.mem_dealloc_fn(g_rnet.timers_stack, g_rnet.mem_user_data);
-        }
-    }
-    else
+    dealloc_fn: rnet_dealloc_fn& = g_rnet.mem_dealloc_fn;
+    if (dealloc_fn == NULL) dealloc_fn = cleanup_dealloc&;
+
+    dealloc_fn(g_rnet.objects, g_rnet.mem_user_data);
+    dealloc_fn(g_rnet.objects_stack, g_rnet.mem_user_data);
+    dealloc_fn(g_rnet.object_writes, g_rnet.mem_user_data);
+    dealloc_fn(g_rnet.object_writes_stack, g_rnet.mem_user_data);
+    dealloc_fn(g_rnet.poll_fds, g_rnet.mem_user_data);
+    dealloc_fn(g_rnet.poll_obj_ids, g_rnet.mem_user_data);
+    if (g_rnet.max_timers > 0)
     {
-        std_mem_dealloc(g_rnet.objects);
-        std_mem_dealloc(g_rnet.objects_stack);
-        std_mem_dealloc(g_rnet.object_writes);      
-        std_mem_dealloc(g_rnet.object_writes_stack);
-        std_mem_dealloc(g_rnet.poll_fds); 
-        std_mem_dealloc(g_rnet.poll_obj_ids); 
-        if (g_rnet.max_timers > 0)
-        {
-            std_mem_dealloc(g_rnet.timers);
-            std_mem_dealloc(g_rnet.timers_stack);
-        }
-    }    
+        dealloc_fn(g_rnet.timers, g_rnet.mem_user_data);
+        dealloc_fn(g_rnet.timers_stack, g_rnet.mem_user_data);
+    }
 
 #if OS_WINDOWS 
     rnet_native_wsa_cleanup() as void;
 #end
 
+}
+
+setup_alloc :: fn (size: usize, user_data: void&) -> void&
+{
+    return std_mem_alloc(size);
+}
+
+cleanup_dealloc :: fn (ptr: void&, user_data: void&)
+{
+    std_mem_dealloc(ptr);
 }
 
 rnet_poll :: fn () -> rnet_error
