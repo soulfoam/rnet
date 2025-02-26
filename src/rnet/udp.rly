@@ -1,17 +1,21 @@
 export_library
 {
-    rnet_udp                     :: struct;
+    rnet_udp                 :: struct;
+    rnet_udp_id              :: type_alias = rnet_object_id;
 
-    rnet_udp_create              :: fn (udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rnet_error;
-    rnet_udp_destroy             :: fn (udp: rnet_udp&);
-    rnet_udp_set_recv            :: fn (udp: rnet_udp&, read_buffer: void&, read_buffer_capacity: usize, recv_fn: rnet_udp_recv_fn&);
-    rnet_udp_bind                :: fn (udp: rnet_udp&, address: rnet_address) -> rnet_error;
-    rnet_udp_send                :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&);
-    rnet_udp_clear_datagrams     :: fn (udp: rnet_udp&);
+    rnet_udp_create          :: fn (udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rnet_error;
+    rnet_udp_destroy         :: fn (udp: rnet_udp&);
+    rnet_udp_set_recv        :: fn (udp: rnet_udp&, read_buffer: void&, read_buffer_capacity: usize, recv_fn: rnet_udp_recv_fn&);
+    rnet_udp_bind            :: fn (udp: rnet_udp&, address: rnet_address) -> rnet_error;
+    rnet_udp_send            :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&);
+    rnet_udp_clear_datagrams :: fn (udp: rnet_udp&);
 
-    rnet_udp_error_fn :: type_alias = fn (udp: rnet_udp&, error: rnet_error);
-    rnet_udp_recv_fn  :: type_alias = fn (udp: rnet_udp&, from_address: rnet_address, buffer: void&, buffer_size: usize);
-    rnet_udp_sent_fn  :: type_alias = fn (udp: rnet_udp&, to_address: rnet_address, buffer: void&, buffer_size: usize);
+    rnet_udp_get_index       :: fn (udp: rnet_udp&) -> usize;
+    rnet_udp_get_id          :: fn (udp: rnet_udp&) -> rnet_udp_id;
+
+    rnet_udp_error_fn        :: type_alias = fn (udp: rnet_udp&, error: rnet_error);
+    rnet_udp_recv_fn         :: type_alias = fn (udp: rnet_udp&, from_address: rnet_address, buffer: void&, buffer_size: usize);
+    rnet_udp_sent_fn         :: type_alias = fn (udp: rnet_udp&, to_address: rnet_address, buffer: void&, buffer_size: usize);
 }
 
 export
@@ -25,6 +29,7 @@ export
         error_fn             : rnet_udp_error_fn&;
         recv_fn              : rnet_udp_recv_fn&;
     }
+
 }
 
 import
@@ -60,8 +65,7 @@ rnet_udp_create :: fn (dst_udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rne
 
 rnet_udp_destroy :: fn (udp: rnet_udp&)
 {
-    rnet_native_close_socket(udp.base.socket) as void;
-    udp.base.socket = RNET_INVALID_SOCKET;
+    rnet_object_destroy(udp.base);
     rnet_push_object(udp.base); 
 }
 
@@ -127,3 +131,12 @@ rnet_udp_for_each_write :: it (udp: rnet_udp&, declare write: rnet_object_write&
     }
 }
 
+rnet_udp_get_index :: fn (udp: rnet_udp&) -> usize
+{
+    return rnet_object_get_index(udp.base);
+}
+
+rnet_udp_get_id :: fn (udp: rnet_udp&) -> rnet_udp_id
+{
+    return rnet_object_get_id(udp.base);
+}

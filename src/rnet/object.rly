@@ -15,7 +15,14 @@ export
             udp : rnet_udp;
         }
 
-        socket          : rnet_socket;
+        socket  : rnet_socket;
+        version : u64;
+    }
+
+    rnet_object_id :: struct
+    {
+        object  : rnet_object&;
+        version : u64;
     }
 
     rnet_object_write :: struct
@@ -29,6 +36,12 @@ export
 
         next          : rnet_object_write&;
     }
+
+    // Called by the child, so it doesn't cleanup the tcp/udp
+    rnet_object_destroy :: fn (obj: rnet_object&);
+
+    rnet_object_get_index :: fn (obj: rnet_object&) -> usize;
+    rnet_object_get_id    :: fn (obj: rnet_object&) -> rnet_object_id;
 }
 
 import
@@ -36,3 +49,23 @@ import
     "rnet";
 }
 
+rnet_object_destroy :: fn (obj: rnet_object&)
+{
+    if (obj.socket != RNET_INVALID_SOCKET)
+    {
+        rnet_native_close_socket(obj.socket) as void;
+        obj.socket = RNET_INVALID_SOCKET;
+    }
+
+    obj.version += 1;
+}
+
+rnet_object_get_index :: fn (obj: rnet_object&) -> usize
+{
+    return (obj - g_rnet.objects) as usize;
+}
+
+rnet_object_get_id :: fn (obj: rnet_object&) -> rnet_object_id
+{
+    return rnet_object_id{obj, obj.version};
+}

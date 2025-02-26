@@ -1,6 +1,7 @@
 export_library
 {
-    rnet_tcp :: struct;
+    rnet_tcp    :: struct;
+    rnet_tcp_id :: type_alias = rnet_object_id;
 
     rnet_tcp_create              :: fn (dst_tcp: rnet_tcp&&, error_fn: rnet_tcp_error_fn&) -> rnet_error;
     rnet_tcp_destroy             :: fn (tcp: rnet_tcp&);
@@ -19,11 +20,8 @@ export_library
     rnet_tcp_connect_ssl         :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&);
 #end
 
-    rnet_tcp_error_fn    :: type_alias = fn (tcp: rnet_tcp&, error: rnet_error);
-    rnet_tcp_accept_fn   :: type_alias = fn (new_tcp: rnet_tcp&);
-    rnet_tcp_connect_fn  :: type_alias = fn (tcp: rnet_tcp&);
-    rnet_tcp_read_fn     :: type_alias = fn (tcp: rnet_tcp&);
-    rnet_tcp_write_fn    :: type_alias = fn (tcp: rnet_tcp&, is_finished: bool);
+    rnet_tcp_get_id        :: fn (tcp: rnet_tcp&) -> rnet_tcp_id;
+    rnet_tcp_get_index     :: fn (tcp: rnet_tcp&) -> usize;
 
     rnet_tcp_set_read_callback  :: fn (tcp: rnet_tcp&, read_fn: rnet_tcp_read_fn&);
     rnet_tcp_set_error_callback :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&);
@@ -47,9 +45,14 @@ export_library
     rnet_tcp_is_writing    :: fn (tcp: rnet_tcp&) -> bool;
     rnet_tcp_is_connected  :: fn (tcp: rnet_tcp&) -> bool;
 
-    rnet_tcp_get_index     :: fn (tcp: rnet_tcp&) -> usize;
     rnet_tcp_set_user_data :: fn (tcp: rnet_tcp&, user_data: void&);
     rnet_tcp_get_user_data :: fn (tcp: rnet_tcp&) -> void&;
+
+    rnet_tcp_error_fn    :: type_alias = fn (tcp: rnet_tcp&, error: rnet_error);
+    rnet_tcp_accept_fn   :: type_alias = fn (new_tcp: rnet_tcp&);
+    rnet_tcp_connect_fn  :: type_alias = fn (tcp: rnet_tcp&);
+    rnet_tcp_read_fn     :: type_alias = fn (tcp: rnet_tcp&);
+    rnet_tcp_write_fn    :: type_alias = fn (tcp: rnet_tcp&, is_finished: bool);
 
 }
 
@@ -156,12 +159,7 @@ rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
     }
 #end
 
-    if (tcp.base.socket != RNET_INVALID_SOCKET) 
-    {
-        rnet_native_close_socket(tcp.base.socket) as void;
-        tcp.base.socket = RNET_INVALID_SOCKET;
-    }
-
+    rnet_object_destroy(tcp.base);
     rnet_push_object(tcp.base);
 }
 
@@ -391,7 +389,12 @@ rnet_tcp_ipv4_as_string :: fn (tcp: rnet_tcp&, buffer: void&) -> string
 
 rnet_tcp_get_index :: fn (tcp: rnet_tcp&) -> usize
 {
-    return (tcp.base - g_rnet.objects) as usize;
+    return rnet_object_get_index(tcp.base);
+}
+
+rnet_tcp_get_id :: fn (tcp: rnet_tcp&) -> rnet_tcp_id
+{
+    return rnet_object_get_id(tcp.base);
 }
 
 rnet_tcp_set_user_data :: fn (tcp: rnet_tcp&, user_data: void&)

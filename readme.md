@@ -12,6 +12,8 @@ Proper docs aren't written yet but the examples show most of the functionality a
 
 ## Notes
 
+If you wish to store a `rnet_tcp&` or `rnet_udp&` pointer and use it outside of an rnet callback, use `rnet_tcp_get_id()` / `rnet_udp_get_id()` to get an ID to store. Then use `rnet_get_tcp()` / `rnet_get_udp()` to get the pointer back (it will return NULL if the TCP/UDP has become invalid)
+
 IPv6 support isn't implemented fully yet, so it's not safe to use the `rnet_address_ipv6` API.
 
 ## Usage flow

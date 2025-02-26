@@ -8,6 +8,9 @@ export_library
     rnet_poll             :: fn () -> rnet_error;
     rnet_poll_until_event :: fn () -> rnet_error;
 
+    rnet_get_tcp :: fn (id: rnet_tcp_id) -> rnet_tcp&;
+    rnet_get_udp :: fn (id: rnet_udp_id) -> rnet_udp&;
+
     rnet_for_each_tcp :: it (declare tcp: rnet_tcp&);
     rnet_for_each_udp :: it (declare udp: rnet_udp&);
 
@@ -53,13 +56,15 @@ export
         object_writes_stack     : rnet_object_write&&;
         object_writes_stack_top : usize;
 
-        timers           : rnet_timer&;
-        max_timers       : usize;
-        timers_stack     : rnet_timer&&;
-        timers_stack_top : usize;
+        timers             : rnet_timer&;
+        max_timers         : usize;
+        timers_stack       : rnet_timer&&;
+        timers_stack_top   : usize;
         active_timers_head : rnet_timer&;
 
-        poll_fds         : rnet_poll_fd&;
+        // These two arrays line up
+        poll_fds           : rnet_poll_fd&;
+        poll_obj_ids       : rnet_object_id&;
 
         user_data         : void&;
 
@@ -80,6 +85,7 @@ export
     rnet_create_socket      :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_type, family: rnet_address_family) -> rnet_error;
     rnet_socket_would_block :: fn () -> bool;
 
+    rnet_get_object            :: fn (id: rnet_object_id) -> rnet_object&;
     rnet_for_each_object       :: it (declare obj: rnet_object&);
     rnet_for_each_active_timer :: it (declare timer: rnet_timer&);
 }
@@ -116,7 +122,8 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
     timers_size       : usize = g_rnet.max_timers * size_of(g_rnet.timers@);
     timers_stack_size : usize = g_rnet.max_timers * size_of(g_rnet.timers_stack_top);
 
-    poll_fds_size : usize = g_rnet.max_objects * size_of(rnet_poll_fd);
+    poll_fds_size     : usize = g_rnet.max_objects * size_of(rnet_poll_fd);
+    poll_obj_ids_size : usize = g_rnet.max_objects * size_of(rnet_object_id);
 
     if (options.mem_alloc_fn != NULL)
     {
@@ -125,6 +132,7 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
         g_rnet.object_writes       = options.mem_alloc_fn(object_writes_size, options.mem_user_data);
         g_rnet.object_writes_stack = options.mem_alloc_fn(object_writes_stack_size, options.mem_user_data);
         g_rnet.poll_fds            = options.mem_alloc_fn(poll_fds_size, options.mem_user_data);
+        g_rnet.poll_obj_ids        = options.mem_alloc_fn(poll_obj_ids_size, options.mem_user_data);
         if (g_rnet.max_timers > 0)
         {
             g_rnet.timers              = options.mem_alloc_fn(timers_size, options.mem_user_data);
@@ -138,6 +146,7 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
         g_rnet.object_writes       = std_mem_alloc(object_writes_size);
         g_rnet.object_writes_stack = std_mem_alloc(object_writes_stack_size);
         g_rnet.poll_fds            = std_mem_alloc(poll_fds_size);
+        g_rnet.poll_obj_ids        = std_mem_alloc(poll_obj_ids_size);
         if (g_rnet.max_timers > 0)
         {
             g_rnet.timers              = std_mem_alloc(timers_size);
@@ -188,6 +197,7 @@ rnet_cleanup :: fn ()
         g_rnet.mem_dealloc_fn(g_rnet.object_writes, g_rnet.mem_user_data);
         g_rnet.mem_dealloc_fn(g_rnet.object_writes_stack, g_rnet.mem_user_data);
         g_rnet.mem_dealloc_fn(g_rnet.poll_fds, g_rnet.mem_user_data);
+        g_rnet.mem_dealloc_fn(g_rnet.poll_obj_ids, g_rnet.mem_user_data);
         if (g_rnet.max_timers > 0)
         {
             g_rnet.mem_dealloc_fn(g_rnet.timers, g_rnet.mem_user_data);
@@ -201,6 +211,7 @@ rnet_cleanup :: fn ()
         std_mem_dealloc(g_rnet.object_writes);      
         std_mem_dealloc(g_rnet.object_writes_stack);
         std_mem_dealloc(g_rnet.poll_fds); 
+        std_mem_dealloc(g_rnet.poll_obj_ids); 
         if (g_rnet.max_timers > 0)
         {
             std_mem_dealloc(g_rnet.timers);
@@ -230,6 +241,9 @@ poll :: fn (no_timeout: bool) -> rnet_error
     rnet_for_each_object(obj: rnet_object&)
     {
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
+        obj_id: rnet_object_id& = g_rnet.poll_obj_ids[count]&;
+        obj_id.object = obj;
+        obj_id.version = obj.version;
 
         poll_fd.socket     = obj.socket;
         poll_fd.in_events  = 0;
@@ -273,8 +287,6 @@ poll :: fn (no_timeout: bool) -> rnet_error
         count += 1;
     }
 
-    if (count == 0) return RNET_OK;
-
     timeout_ms: s32 = S32_MAX_VALUE;
     now: u64 = rnet_time_now_ms();
     rnet_for_each_active_timer(timer: rnet_timer&)
@@ -288,11 +300,13 @@ poll :: fn (no_timeout: bool) -> rnet_error
     res: c_int = rnet_native_poll(g_rnet.poll_fds, count, timeout_ms);
     if (res < 0) return RNET_ERROR_POLL;
 
-    count = 0;
-
-    rnet_for_each_object(obj: rnet_object&)
+    // All of the (obj != NULL) checks are because in any given callback the object could be destroyed
+    // Maybe we should just make destroy async
+    for_each_object_being_polled(count, obj_id: rnet_object_id, i: usize)
     {
-        poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
+        poll_fd: rnet_poll_fd& = g_rnet.poll_fds[i]&;
+        obj: rnet_object& = rnet_get_object(obj_id);
+        if (obj == NULL) continue;
         
         if (obj.type == RNET_OBJECT_TCP)
         {
@@ -319,8 +333,9 @@ poll :: fn (no_timeout: bool) -> rnet_error
                         if (poll_fd.out_events & RNET_POLLIN > 0)  
                         {
                             rnet_tcp_internal_read(tcp);
+                            obj = rnet_get_object(obj_id);
                         }
-                        if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0) 
+                        if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0) 
                         {
                             rnet_tcp_internal_write(tcp);
                         }
@@ -337,8 +352,9 @@ poll :: fn (no_timeout: bool) -> rnet_error
                         if (poll_fd.out_events & RNET_POLLIN > 0)  
                         {
                             rnet_tcp_internal_read(tcp);
+                            obj = rnet_get_object(obj_id);
                         }
-                        if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0) 
+                        if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0) 
                         {
                             rnet_tcp_internal_write(tcp);
                         }
@@ -365,10 +381,11 @@ poll :: fn (no_timeout: bool) -> rnet_error
                     udp.recv_fn(udp, from, udp.read_buffer, res);
                     std_mem_set(udp.read_buffer, udp.read_buffer_capacity, 0);
                 }
+
+                obj = rnet_get_object(obj_id);
             }
             
-            // We check INVALID_SOCKET because there may have been an error/close above ^
-            if (obj.socket != RNET_INVALID_SOCKET && poll_fd.out_events & RNET_POLLOUT > 0)
+            if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0)
             {
                 write: rnet_object_write& = udp.writes;
                 if (write != NULL)
@@ -382,16 +399,18 @@ poll :: fn (no_timeout: bool) -> rnet_error
                     else
                     {
                         write.udp_sent_fn(udp, write.address, write.buffer, res);
-
-                        next: rnet_object_write& = udp.writes.next;
-                        rnet_push_object_write(udp.writes);
-                        udp.writes = next;
+                        
+                        obj = rnet_get_object(obj_id);
+                        if (obj != NULL)
+                        {
+                            next: rnet_object_write& = udp.writes.next;
+                            rnet_push_object_write(udp.writes);
+                            udp.writes = next;
+                        }
                     }
                 }
             }
         }
-
-        count += 1;
     }
 
     now = rnet_time_now_ms();
@@ -431,6 +450,20 @@ rnet_bind :: fn (socket: rnet_socket, addr: rnet_address&) -> rnet_error
     {
         return RNET_ERROR_BIND;
     }
+}
+
+rnet_get_tcp :: fn (id: rnet_tcp_id) -> rnet_tcp&
+{
+    tcp: rnet_tcp& = id.object.tcp&;
+    if (tcp.base.version != id.version) return NULL;
+    return tcp;
+}
+
+rnet_get_udp :: fn (id: rnet_udp_id) -> rnet_udp&
+{
+    udp: rnet_udp& = id.object.udp&;
+    if (udp.base.version != id.version) return NULL;
+    return udp;
 }
 
 rnet_for_each_tcp :: it (declare tcp: rnet_tcp&)
@@ -541,6 +574,13 @@ rnet_get_native_error :: fn () -> c_int
 #end
 }
 
+rnet_get_object :: fn (id: rnet_object_id) -> rnet_object&
+{
+    obj: rnet_object& = id.object;
+    if (obj.version != id.version) return NULL;
+    return obj;
+}
+
 rnet_for_each_object :: it (declare obj: rnet_object&)
 {
     i: usize = 0;
@@ -563,6 +603,17 @@ rnet_for_each_active_timer :: it (declare timer: rnet_timer&)
         timer = current;
         yield;
         current = current.next;
+    }
+}
+
+for_each_object_being_polled :: it (count: usize, declare obj_id: rnet_object_id, declare i: usize)
+{ 
+    i = 0;
+    while (i < count)
+    {
+        obj_id = g_rnet.poll_obj_ids[i];
+        yield;
+        i += 1;
     }
 }
 
