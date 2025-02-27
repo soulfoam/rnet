@@ -1,6 +1,9 @@
 export_library
 {
-    rnet_time_now_us :: fn () -> u64;
+    // Gives time back in nanoseconds
+    rnet_time_now    :: fn () -> u64;
+
+    // Gives time back in milliseconds
     rnet_time_now_ms :: fn () -> u64;
 
 #if OS_WINDOWS
@@ -197,22 +200,22 @@ rnet_time_setup :: fn ()
 #end
 }
 
-rnet_time_now_us :: fn () -> u64
+rnet_time_now :: fn () -> u64
 {
 #if OS_LINUX
     spec: linux_timespec;
     linux_clock_gettime(LINUX_CLOCK_MONOTONIC, spec&) as void;
-    now: u64 = (spec.tv_sec * 1000000) + (spec.tv_nsec / 1000);
+    now: u64 = (spec.tv_sec * 1000000000) + spec.tv_nsec;
     return now;
 
 #elif OS_WINDOWS
     now: s64;
     windows_query_performance_counter(now&) as void;
-    return ((1000000 * now) / windows_rate) as u64;
+    return ((1000000000 * now) / windows_rate) as u64;
 #end
 }
 
 rnet_time_now_ms :: fn () -> u64
 {
-    return rnet_time_now_us() / 1000;
+    return rnet_time_now() / 1000000;
 }
