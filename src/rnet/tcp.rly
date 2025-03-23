@@ -44,6 +44,7 @@ export_library
 
     rnet_tcp_is_writing    :: fn (tcp: rnet_tcp&) -> bool;
     rnet_tcp_is_connected  :: fn (tcp: rnet_tcp&) -> bool;
+    rnet_tcp_is_connect_in_progress :: fn (tcp: rnet_tcp&) -> bool;
 
     rnet_tcp_set_user_data :: fn (tcp: rnet_tcp&, user_data: void&);
     rnet_tcp_get_user_data :: fn (tcp: rnet_tcp&) -> void&;
@@ -107,7 +108,6 @@ export
     rnet_tcp_internal_accept_ssl    :: fn (tcp: rnet_tcp&);
     rnet_tcp_internal_read          :: fn (tcp: rnet_tcp&);
     rnet_tcp_internal_write         :: fn (tcp: rnet_tcp&);
-    rnet_tcp_is_connect_in_progress :: fn (tcp: rnet_tcp&) -> bool;
 
     rnet_tcp_for_each_write_object :: it (tcp: rnet_tcp&, declare write: rnet_object_write&);
 }
