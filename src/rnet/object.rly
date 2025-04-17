@@ -18,12 +18,8 @@ export
         socket  : rnet_socket;
         version : u64;
     }
-
-    rnet_object_id :: struct
-    {
-        object  : rnet_object&;
-        version : u64;
-    }
+    
+    rnet_object_id :: type_alias = u64;
 
     rnet_object_write :: struct
     {
@@ -40,8 +36,11 @@ export
     // Called by the child, so it doesn't cleanup the tcp/udp
     rnet_object_destroy :: fn (obj: rnet_object&);
 
-    rnet_object_get_index :: fn (obj: rnet_object&) -> usize;
-    rnet_object_get_id    :: fn (obj: rnet_object&) -> rnet_object_id;
+    rnet_object_get_index :: fn (obj: rnet_object&) -> u32;
+
+    rnet_object_get_id         :: fn (obj: rnet_object&) -> rnet_object_id;
+    rnet_object_id_get_index   :: fn (id: rnet_object_id) -> u32;
+    rnet_object_id_get_version :: fn (id: rnet_object_id) -> u32;
 }
 
 import
@@ -60,12 +59,23 @@ rnet_object_destroy :: fn (obj: rnet_object&)
     obj.version += 1;
 }
 
-rnet_object_get_index :: fn (obj: rnet_object&) -> usize
+rnet_object_get_index :: fn (obj: rnet_object&) -> u32
 {
-    return (obj - g_rnet.objects) as usize;
+    return (obj - g_rnet.objects) as u32;
 }
 
 rnet_object_get_id :: fn (obj: rnet_object&) -> rnet_object_id
 {
-    return rnet_object_id{obj, obj.version};
+    return obj.version as u64 << 32 | rnet_object_get_index(obj) as u64;
 }
+
+rnet_object_id_get_index :: fn (id: rnet_object_id) -> u32
+{
+    return id as u32;
+}
+
+rnet_object_id_get_version :: fn (id: rnet_object_id) -> u32
+{ 
+    return (id >> 32) as u32;
+}
+

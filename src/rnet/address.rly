@@ -14,7 +14,7 @@ export_library
     // this call blocks for now, will implement async version soon
     rnet_address_resolve :: it (url: string, declare addr: rnet_address);
 
-    RNET_IPV4_STRING_SIZE :: define usize = 16;
+    RNET_IPV4_STRING_SIZE :: define u8 = 16;
 
     rnet_address_family :: enum c_ushort
     {
@@ -86,7 +86,7 @@ rnet_address_init_ipv4 :: fn (address: rnet_address&, ip: string, port: u16) -> 
 { 
     std_mem_set(address, size_of(address@), 0);
     ip_bytes: u8[4];
-    i: usize = 0;
+    i: u32 = 0;
     std_string_tokenize(ip, ".", str_num: string)
     {
         if (i >= 4) return RNET_ERROR_INVALID_IP_STRING;

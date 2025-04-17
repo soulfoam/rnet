@@ -21,7 +21,7 @@ export_library
 #end
 
     rnet_tcp_get_id        :: fn (tcp: rnet_tcp&) -> rnet_tcp_id;
-    rnet_tcp_get_index     :: fn (tcp: rnet_tcp&) -> usize;
+    rnet_tcp_get_index     :: fn (tcp: rnet_tcp&) -> u32;
 
     rnet_tcp_set_read_callback  :: fn (tcp: rnet_tcp&, read_fn: rnet_tcp_read_fn&);
     rnet_tcp_set_error_callback :: fn (tcp: rnet_tcp&, error_fn: rnet_tcp_error_fn&);
@@ -387,7 +387,7 @@ rnet_tcp_ipv4_as_string :: fn (tcp: rnet_tcp&, buffer: void&) -> string
     return rnet_address_get_ipv4_as_string(tcp.address&, buffer);
 }
 
-rnet_tcp_get_index :: fn (tcp: rnet_tcp&) -> usize
+rnet_tcp_get_index :: fn (tcp: rnet_tcp&) -> u32
 {
     return rnet_object_get_index(tcp.base);
 }

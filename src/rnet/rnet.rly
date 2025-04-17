@@ -20,17 +20,19 @@ export_library
     rnet_options :: struct
     {   
         // Total number of sockets for both UDP and TCP (must be at least 1)
-        max_sockets         : usize;
+        max_sockets         : u32;
 
         // Total number of writes that can be submitted consecutively until you must wait for a write callback to report a finished write
         // For example An HTTP server which is request/response based would probably make this 1*MAX_SOCKETS as it simply builds a response then calls write once
-        max_writes_in_queue : usize;
+        max_writes_in_queue : u64;
         
         // Total number of timers to allocate (can be 0 if unused)
-        max_timers          : usize;
+        max_timers          : u32;
 
+        // Application user data (can be NULL if unused)
         user_data           : void&;
 
+        // Memory callback functions (can be NULL if unused)
         mem_alloc_fn        : rnet_alloc_fn&;
         mem_dealloc_fn      : rnet_dealloc_fn&;
         mem_user_data       : void&;
@@ -47,19 +49,19 @@ export
     rnet_state :: struct
     {
         objects           : rnet_object&;
-        max_objects       : usize;
+        max_objects       : u32;
         objects_stack     : rnet_object&&;
-        objects_stack_top : usize;
+        objects_stack_top : u32;
 
         object_writes           : rnet_object_write&;
-        max_object_writes       : usize;
+        max_object_writes       : u64;
         object_writes_stack     : rnet_object_write&&;
-        object_writes_stack_top : usize;
+        object_writes_stack_top : u64;
 
         timers             : rnet_timer&;
-        max_timers         : usize;
+        max_timers         : u32;
         timers_stack       : rnet_timer&&;
-        timers_stack_top   : usize;
+        timers_stack_top   : u32;
         active_timers_head : rnet_timer&;
 
         // These two arrays line up
@@ -109,8 +111,8 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
     g_rnet.max_objects             = options.max_sockets;
     g_rnet.max_object_writes       = options.max_writes_in_queue;
     g_rnet.max_timers              = options.max_timers;
-    g_rnet.objects_stack_top       = USIZE_MAX_VALUE;
-    g_rnet.object_writes_stack_top = USIZE_MAX_VALUE;
+    g_rnet.objects_stack_top       = U32_MAX_VALUE;
+    g_rnet.object_writes_stack_top = U64_MAX_VALUE;
     g_rnet.user_data               = options.user_data;
     g_rnet.mem_dealloc_fn          = options.mem_dealloc_fn;
     g_rnet.mem_user_data           = options.mem_user_data;
@@ -119,15 +121,15 @@ rnet_setup :: fn (options: rnet_options&) -> rnet_error
     if (alloc_fn == NULL) alloc_fn = setup_alloc&;
 
     g_rnet.objects             = alloc_fn(g_rnet.max_objects * size_of(g_rnet.objects@), g_rnet.mem_user_data);
-    g_rnet.objects_stack       = alloc_fn(g_rnet.max_objects * size_of(g_rnet.objects_stack_top), g_rnet.mem_user_data);
+    g_rnet.objects_stack       = alloc_fn(g_rnet.max_objects * size_of(g_rnet.objects@), g_rnet.mem_user_data);
     g_rnet.object_writes       = alloc_fn(g_rnet.max_object_writes * size_of(g_rnet.object_writes@), g_rnet.mem_user_data);
-    g_rnet.object_writes_stack = alloc_fn(g_rnet.max_object_writes * size_of(g_rnet.object_writes_stack_top), g_rnet.mem_user_data);
+    g_rnet.object_writes_stack = alloc_fn(g_rnet.max_object_writes * size_of(g_rnet.object_writes@), g_rnet.mem_user_data);
     g_rnet.poll_fds            = alloc_fn(g_rnet.max_objects * size_of(rnet_poll_fd), g_rnet.mem_user_data);
     g_rnet.poll_obj_ids        = alloc_fn(g_rnet.max_objects * size_of(rnet_object_id), g_rnet.mem_user_data);
     if (g_rnet.max_timers > 0)
     {
         g_rnet.timers       = alloc_fn(g_rnet.max_timers * size_of(g_rnet.timers@), g_rnet.mem_user_data);
-        g_rnet.timers_stack = alloc_fn(g_rnet.max_timers * size_of(g_rnet.timers_stack_top), g_rnet.mem_user_data);
+        g_rnet.timers_stack = alloc_fn(g_rnet.max_timers * size_of(g_rnet.timers@), g_rnet.mem_user_data);
     }
 
     for_each_object_reverse(obj: rnet_object&)
@@ -209,13 +211,12 @@ rnet_poll_until_event :: fn () -> rnet_error
 
 poll :: fn (no_timeout: bool) -> rnet_error
 {
-    count: usize = 0;    
+    count: u32 = 0;    
     rnet_for_each_object(obj: rnet_object&)
     {
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
         obj_id: rnet_object_id& = g_rnet.poll_obj_ids[count]&;
-        obj_id.object = obj;
-        obj_id.version = obj.version;
+        obj_id@ = rnet_object_get_id(obj);
 
         poll_fd.socket     = obj.socket;
         poll_fd.in_events  = 0;
@@ -274,7 +275,7 @@ poll :: fn (no_timeout: bool) -> rnet_error
 
     // All of the (obj != NULL) checks are because in any given callback the object could be destroyed
     // Maybe we should just make destroy async
-    for_each_object_being_polled(count, obj_id: rnet_object_id, i: usize)
+    for_each_object_being_polled(count, obj_id: rnet_object_id, i: u32)
     {
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[i]&;
         obj: rnet_object& = rnet_get_object(obj_id);
@@ -426,15 +427,15 @@ rnet_bind :: fn (socket: rnet_socket, addr: rnet_address&) -> rnet_error
 
 rnet_get_tcp :: fn (id: rnet_tcp_id) -> rnet_tcp&
 {
-    tcp: rnet_tcp& = id.object.tcp&;
-    if (tcp.base.version != id.version) return NULL;
+    tcp: rnet_tcp& = g_rnet.objects[rnet_object_id_get_index(id)].tcp&;
+    if (tcp.base.version != rnet_object_id_get_version(id)) return NULL;
     return tcp;
 }
 
 rnet_get_udp :: fn (id: rnet_udp_id) -> rnet_udp&
 {
-    udp: rnet_udp& = id.object.udp&;
-    if (udp.base.version != id.version) return NULL;
+    udp: rnet_udp& = g_rnet.objects[rnet_object_id_get_index(id)].udp&;
+    if (udp.base.version != rnet_object_id_get_version(id)) return NULL;
     return udp;
 }
 
@@ -466,7 +467,7 @@ rnet_push_object :: fn (obj: rnet_object&)
 
 rnet_pop_object  :: fn () -> rnet_object&
 {
-    if (g_rnet.objects_stack_top == USIZE_MAX_VALUE) return NULL;
+    if (g_rnet.objects_stack_top == U32_MAX_VALUE) return NULL;
 
     obj: rnet_object& = g_rnet.objects_stack[g_rnet.objects_stack_top];
     g_rnet.objects_stack_top -= 1;
@@ -483,7 +484,7 @@ rnet_push_object_write :: fn (obj_write: rnet_object_write&)
 
 rnet_pop_object_write  :: fn () -> rnet_object_write&
 {
-    if (g_rnet.object_writes_stack_top == USIZE_MAX_VALUE) return NULL;
+    if (g_rnet.object_writes_stack_top == U64_MAX_VALUE) return NULL;
 
     w: rnet_object_write& = g_rnet.object_writes_stack[g_rnet.object_writes_stack_top];
     g_rnet.object_writes_stack_top -= 1;
@@ -499,7 +500,7 @@ rnet_push_timer :: fn (timer: rnet_timer&)
 
 rnet_pop_timer  :: fn () -> rnet_timer&
 {
-    if (g_rnet.timers_stack_top == USIZE_MAX_VALUE) return NULL;
+    if (g_rnet.timers_stack_top == U32_MAX_VALUE) return NULL;
 
     timer: rnet_timer& = g_rnet.timers_stack[g_rnet.timers_stack_top];
     g_rnet.timers_stack_top -= 1;
@@ -548,14 +549,14 @@ rnet_get_native_error :: fn () -> c_int
 
 rnet_get_object :: fn (id: rnet_object_id) -> rnet_object&
 {
-    obj: rnet_object& = id.object;
-    if (obj.version != id.version) return NULL;
+    obj: rnet_object& = g_rnet.objects[rnet_object_id_get_index(id)]&;
+    if (obj.version != rnet_object_id_get_version(id)) return NULL;
     return obj;
 }
 
 rnet_for_each_object :: it (declare obj: rnet_object&)
 {
-    i: usize = 0;
+    i: u32 = 0;
     while (i < g_rnet.max_objects)
     {
         obj = g_rnet.objects[i]&; 
@@ -578,7 +579,7 @@ rnet_for_each_active_timer :: it (declare timer: rnet_timer&)
     }
 }
 
-for_each_object_being_polled :: it (count: usize, declare obj_id: rnet_object_id, declare i: usize)
+for_each_object_being_polled :: it (count: u32, declare obj_id: rnet_object_id, declare i: u32)
 { 
     i = 0;
     while (i < count)
@@ -591,7 +592,7 @@ for_each_object_being_polled :: it (count: usize, declare obj_id: rnet_object_id
 
 for_each_object_reverse :: it (declare obj: rnet_object&)
 { 
-    i: usize = g_rnet.max_objects;
+    i: u32 = g_rnet.max_objects;
     while (i > 0)
     {
         i -= 1;
@@ -602,7 +603,7 @@ for_each_object_reverse :: it (declare obj: rnet_object&)
 
 for_each_object_write_reverse :: it (declare write: rnet_object_write&)
 { 
-    i: usize = g_rnet.max_object_writes;
+    i: u64 = g_rnet.max_object_writes;
     while (i > 0)
     {
         i -= 1;
@@ -613,7 +614,7 @@ for_each_object_write_reverse :: it (declare write: rnet_object_write&)
 
 for_each_timer_reverse :: it (declare timer: rnet_timer&)
 { 
-    i: usize = g_rnet.max_timers;
+    i: u32 = g_rnet.max_timers;
     while (i > 0)
     {
         i -= 1;

@@ -10,7 +10,7 @@ export_library
     rnet_udp_send            :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&);
     rnet_udp_clear_datagrams :: fn (udp: rnet_udp&);
 
-    rnet_udp_get_index       :: fn (udp: rnet_udp&) -> usize;
+    rnet_udp_get_index       :: fn (udp: rnet_udp&) -> u32;
     rnet_udp_get_id          :: fn (udp: rnet_udp&) -> rnet_udp_id;
 
     rnet_udp_error_fn        :: type_alias = fn (udp: rnet_udp&, error: rnet_error);
@@ -131,7 +131,7 @@ rnet_udp_for_each_write :: it (udp: rnet_udp&, declare write: rnet_object_write&
     }
 }
 
-rnet_udp_get_index :: fn (udp: rnet_udp&) -> usize
+rnet_udp_get_index :: fn (udp: rnet_udp&) -> u32
 {
     return rnet_object_get_index(udp.base);
 }
