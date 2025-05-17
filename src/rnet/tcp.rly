@@ -437,8 +437,11 @@ rnet_tcp_internal_connect :: fn (tcp: rnet_tcp&)
         tcp.state = RNET_TCP_STATE_SUCCESS;
 
 #if RNET_OPENSSL
-        if (tcp.ssl != NULL) tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
-        return;
+        if (tcp.ssl != NULL) 
+        {
+            tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
+            return;
+        }
 #end
 
         if (tcp.connect_fn != NULL) tcp.connect_fn(tcp);
