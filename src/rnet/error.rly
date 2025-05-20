@@ -27,6 +27,7 @@ export_library
         RNET_ERROR_SSL_PRIVATE_KEY;
     }
 
+    rnet_error_is_fatal :: fn (err: rnet_error) -> bool;
     rnet_error_as_string :: fn (err: rnet_error) -> string;
 }
 
@@ -62,4 +63,21 @@ rnet_error_as_string :: fn (err: rnet_error) -> string
     return strs[err];
 }
 
+rnet_error_is_fatal :: fn (err: rnet_error) -> bool
+{
+    switch (err)
+    {
+        RNET_OK
+        RNET_ERROR_READ_BUFFER_FULL
+        RNET_ERROR_WRITE_QUEUE_FULL 
+        RNET_ERROR_TRY_AGAIN
+        RNET_ERROR_MAX_SOCKETS
+        RNET_ERROR_TCP_SET_NO_DELAY
+        {
+            return false;
+        }
+        default { return true; }
+    }
 
+    return true;
+}
