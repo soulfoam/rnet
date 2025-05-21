@@ -65,6 +65,7 @@ rnet_udp_create :: fn (dst_udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rne
 
 rnet_udp_destroy :: fn (udp: rnet_udp&)
 {
+    rnet_udp_clear_datagrams(udp);
     rnet_object_destroy(udp.base);
     rnet_push_object(udp.base); 
 }

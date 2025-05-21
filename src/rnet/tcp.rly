@@ -147,6 +147,8 @@ rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
 { 
     if (tcp == NULL) return;
 
+    rnet_tcp_clear_writes(tcp);
+
 #if RNET_OPENSSL
     if (tcp.ssl != NULL) 
     {
