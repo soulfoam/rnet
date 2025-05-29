@@ -267,7 +267,7 @@ poll :: fn (no_timeout: bool) -> rnet_error
         remaining: u64 = (timer.start + timer.time_ms) - now; 
         if (remaining < timeout_ms) timeout_ms = remaining as s32;
     }
-    if (timeout_ms == U32_MAX_VALUE) timeout_ms = -1;
+    if (timeout_ms == S32_MAX_VALUE) timeout_ms = -1;
     if (no_timeout) timeout_ms = 0;
 
     res: c_int = rnet_native_poll(g_rnet.poll_fds, count, timeout_ms);
