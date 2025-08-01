@@ -152,10 +152,7 @@ rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
 #if RNET_OPENSSL
     if (tcp.ssl != NULL) 
     {
-        if (SSL_shutdown(tcp.ssl) == 0)
-        {
-            SSL_shutdown(tcp.ssl) as void;
-        }
+        SSL_shutdown(tcp.ssl) as void;
         SSL_free(tcp.ssl);
         tcp.ssl = NULL;
     }
