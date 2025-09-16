@@ -304,6 +304,7 @@ poll :: fn (no_timeout: bool) -> rnet_error
                     if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS && poll_fd.out_events != 0)
                     {
                         rnet_tcp_internal_accept_ssl(tcp);
+                        obj = rnet_get_object(obj_id);
                     }
                     else
                     {

@@ -505,11 +505,22 @@ rnet_tcp_internal_accept_ssl :: fn (tcp: rnet_tcp&)
 {
 #if RNET_OPENSSL
     err: rnet_error = try_accept_ssl(tcp);
-    if (err != RNET_OK) return;
-
-    tcp.state = RNET_TCP_STATE_SSL_SUCCESS;
-
-    tcp.accept_fn(tcp);
+    switch (err)
+    {
+        RNET_OK
+        {
+            tcp.state = RNET_TCP_STATE_SSL_SUCCESS;
+            tcp.accept_fn(tcp);
+        }
+        RNET_ERROR_TRY_AGAIN
+        {
+            return;
+        }
+        default
+        {
+            rnet_tcp_destroy(tcp);
+        }
+    }
 #end
 }
 
