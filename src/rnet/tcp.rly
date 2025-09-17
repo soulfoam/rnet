@@ -469,15 +469,27 @@ rnet_tcp_internal_accept :: fn (listener: rnet_tcp&)
         return;
     }
 
+    err: rnet_error = RNET_OK;
+
     addr: rnet_address = {};
     addr_size: rnet_socket_size = size_of(addr.ipv4);
     socket: rnet_socket = rnet_native_accept(listener.base.socket, addr.ipv4&, addr_size&);
     if (socket == RNET_INVALID_SOCKET) 
     {
-        rnet_push_object(obj);
-        listener.error_fn(listener, RNET_ERROR_TCP_ACCEPT);
-        return;
+        err = RNET_ERROR_TCP_ACCEPT;
     }
+
+    if (err == RNET_OK)
+    {
+        err = rnet_socket_set_non_blocking(socket);
+    }
+
+    if (err != RNET_OK)
+    {
+        rnet_push_object(obj);
+        listener.error_fn(listener, err);
+        return;
+    } 
 
     tcp: rnet_tcp&;
     tcp_init(obj, tcp&, socket, NULL);

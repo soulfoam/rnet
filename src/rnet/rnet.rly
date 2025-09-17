@@ -86,6 +86,7 @@ export
     rnet_bind               :: fn (s: rnet_socket, addr: rnet_address&) -> rnet_error;
     rnet_create_socket      :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_type, family: rnet_address_family) -> rnet_error;
     rnet_destroy_socket     :: fn (socket: rnet_socket);
+    rnet_socket_set_non_blocking :: fn (socket: rnet_socket) -> rnet_error;
     rnet_socket_would_block :: fn () -> bool;
 
     rnet_get_object            :: fn (id: rnet_object_id) -> rnet_object&;
@@ -410,12 +411,43 @@ rnet_create_socket :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_typ
     dst_socket@ = rnet_native_create_socket(family, socket_type, 0);
     if (dst_socket@ == RNET_INVALID_SOCKET) return RNET_ERROR_CREATE_SOCKET;
     
-    return change_socket_to_non_blocking(dst_socket@);   
+    err: rnet_error = rnet_socket_set_non_blocking(dst_socket@);   
+    if (err != RNET_OK)
+    {
+        rnet_native_destroy_socket(dst_socket@);
+    }
+
+    return err;
 }
 
 rnet_destroy_socket :: fn (socket: rnet_socket)
 {
     rnet_native_close_socket(socket) as void;
+}
+
+rnet_socket_set_non_blocking :: fn (socket: rnet_socket) -> rnet_error
+{
+#if OS_WINDOWS
+    mode: c_ulong = 1;
+    if (rnet_native_ioctlsocket(socket, RNET_NATIVE_FIONBIO, mode&) != 0) return RNET_ERROR_SET_NON_BLOCKING; 
+#else
+    if (rnet_native_fcntl(socket, RNET_NATIVE_SETFL, rnet_native_fcntl(socket, RNET_NATIVE_GETFL, 0) | RNET_NATIVE_NONBLOCK) == -1) return RNET_ERROR_SET_NON_BLOCKING;
+#end
+
+    return RNET_OK;
+}
+
+rnet_socket_would_block :: fn () -> bool
+{
+    err: c_int = rnet_get_native_error();
+#if OS_WINDOWS
+    WSAEWOULDBLOCK :: define c_int = 10035;
+    return err == WSAEWOULDBLOCK;
+#else
+    EAGAIN      :: define c_int = 11;
+    EINPROGRESS :: define c_int = 115;
+    return err == EAGAIN || err == EINPROGRESS;
+#end
 }
 
 rnet_bind :: fn (socket: rnet_socket, addr: rnet_address&) -> rnet_error
@@ -517,31 +549,6 @@ rnet_pop_timer  :: fn () -> rnet_timer&
     g_rnet.timers_stack_top -= 1;
 
     return timer;
-}
-
-rnet_socket_would_block :: fn () -> bool
-{
-    err: c_int = rnet_get_native_error();
-#if OS_WINDOWS
-    WSAEWOULDBLOCK :: define c_int = 10035;
-    return err == WSAEWOULDBLOCK;
-#else
-    EAGAIN      :: define c_int = 11;
-    EINPROGRESS :: define c_int = 115;
-    return err == EAGAIN || err == EINPROGRESS;
-#end
-}
-
-change_socket_to_non_blocking :: fn (socket: rnet_socket) -> rnet_error
-{
-#if OS_WINDOWS
-    mode: c_ulong = 1;
-    if (rnet_native_ioctlsocket(socket, RNET_NATIVE_FIONBIO, mode&) != 0) return RNET_ERROR_SET_NON_BLOCKING; 
-#else
-    if (rnet_native_fcntl(socket, RNET_NATIVE_SETFL, rnet_native_fcntl(socket, RNET_NATIVE_GETFL, 0) | RNET_NATIVE_NONBLOCK) == -1) return RNET_ERROR_SET_NON_BLOCKING;
-#end
-
-    return RNET_OK;
 }
 
 rnet_get_user_data :: fn () -> void&
