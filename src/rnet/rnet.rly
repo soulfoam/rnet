@@ -414,7 +414,7 @@ rnet_create_socket :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_typ
     err: rnet_error = rnet_socket_set_non_blocking(dst_socket@);   
     if (err != RNET_OK)
     {
-        rnet_native_destroy_socket(dst_socket@);
+        rnet_destroy_socket(dst_socket@);
     }
 
     return err;
