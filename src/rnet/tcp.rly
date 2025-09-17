@@ -120,17 +120,24 @@ import
 
 rnet_tcp_create :: fn (dst_tcp: rnet_tcp&&, error_fn: rnet_tcp_error_fn&) -> rnet_error
 {
+    obj: rnet_object& = rnet_pop_object();
+    if (obj == NULL) return RNET_ERROR_MAX_SOCKETS;
+
     socket: rnet_socket;
     err: rnet_error = rnet_create_socket(socket&, RNET_SOCKET_STREAM, RNET_IPV4);
-    if (err != RNET_OK) return err;
-
-    obj: rnet_object& = rnet_pop_object();
-    if (obj == NULL) 
+    if (err != RNET_OK) 
     {
-        rnet_native_close_socket(socket) as void;
-        return RNET_ERROR_MAX_SOCKETS;
+        rnet_push_object(obj);
+        return err;
     }
+    
+    tcp_init(obj, dst_tcp, socket, error_fn);
 
+    return RNET_OK;
+}
+
+tcp_init :: fn (obj: rnet_object&, dst_tcp: rnet_tcp&&, socket: rnet_socket, error_fn: rnet_tcp_error_fn&)
+{
     obj.type = RNET_OBJECT_TCP;
 
     dst_tcp@ = obj.tcp&;
@@ -139,8 +146,6 @@ rnet_tcp_create :: fn (dst_tcp: rnet_tcp&&, error_fn: rnet_tcp_error_fn&) -> rne
     dst_tcp.base        = obj;
     dst_tcp.base.socket = socket;
     dst_tcp.error_fn    = error_fn;
-
-    return RNET_OK;
 }
 
 rnet_tcp_destroy :: fn (tcp: rnet_tcp&)
@@ -457,11 +462,10 @@ rnet_tcp_internal_connect :: fn (tcp: rnet_tcp&)
 
 rnet_tcp_internal_accept :: fn (listener: rnet_tcp&)
 {
-    tcp: rnet_tcp&;
-    error: rnet_error = rnet_tcp_create(tcp&, NULL);
-    if (error != RNET_OK) 
+    obj: rnet_object& = rnet_pop_object();
+    if (obj == NULL) 
     {
-        listener.error_fn(listener, error);
+        listener.error_fn(listener, RNET_ERROR_MAX_SOCKETS);
         return;
     }
 
@@ -470,9 +474,13 @@ rnet_tcp_internal_accept :: fn (listener: rnet_tcp&)
     socket: rnet_socket = rnet_native_accept(listener.base.socket, addr.ipv4&, addr_size&);
     if (socket == RNET_INVALID_SOCKET) 
     {
+        rnet_push_object(obj);
         listener.error_fn(listener, RNET_ERROR_TCP_ACCEPT);
         return;
     }
+
+    tcp: rnet_tcp&;
+    tcp_init(obj, tcp&, socket, NULL);
     
     tcp.type        = RNET_TCP_LISTENER_CONNECTION;
     tcp.state       = RNET_TCP_STATE_SUCCESS;

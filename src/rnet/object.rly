@@ -52,7 +52,7 @@ rnet_object_destroy :: fn (obj: rnet_object&)
 {
     if (obj.socket != RNET_INVALID_SOCKET)
     {
-        rnet_native_close_socket(obj.socket) as void;
+        rnet_destroy_socket(obj.socket);
         obj.socket = RNET_INVALID_SOCKET;
     }
 

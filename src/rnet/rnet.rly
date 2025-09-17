@@ -85,6 +85,7 @@ export
 
     rnet_bind               :: fn (s: rnet_socket, addr: rnet_address&) -> rnet_error;
     rnet_create_socket      :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_type, family: rnet_address_family) -> rnet_error;
+    rnet_destroy_socket     :: fn (socket: rnet_socket);
     rnet_socket_would_block :: fn () -> bool;
 
     rnet_get_object            :: fn (id: rnet_object_id) -> rnet_object&;
@@ -410,6 +411,11 @@ rnet_create_socket :: fn (dst_socket: rnet_socket&, socket_type: rnet_socket_typ
     if (dst_socket@ == RNET_INVALID_SOCKET) return RNET_ERROR_CREATE_SOCKET;
     
     return change_socket_to_non_blocking(dst_socket@);   
+}
+
+rnet_destroy_socket :: fn (socket: rnet_socket)
+{
+    rnet_native_close_socket(socket) as void;
 }
 
 rnet_bind :: fn (socket: rnet_socket, addr: rnet_address&) -> rnet_error
