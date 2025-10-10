@@ -17,6 +17,14 @@ export
 
         socket  : rnet_socket;
         version : u64;
+        destroy_state : rnet_object_destroy_state;
+    }
+
+    rnet_object_destroy_state :: enum u8
+    {
+        RNET_OBJECT_DESTROY_STATE_NONE;
+        RNET_OBJECT_DESTROY_STATE_FLUSH;
+        RNET_OBJECT_DESTROY_STATE_FINISHED;
     }
     
     rnet_object_id :: type_alias = u64;
@@ -57,6 +65,7 @@ rnet_object_destroy :: fn (obj: rnet_object&)
     }
 
     obj.version += 1;
+    obj.destroy_state = RNET_OBJECT_DESTROY_STATE_NONE;
 }
 
 rnet_object_get_index :: fn (obj: rnet_object&) -> u32

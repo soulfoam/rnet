@@ -162,11 +162,11 @@ rnet_cleanup :: fn ()
     {
         if (obj.type == RNET_OBJECT_TCP)
         {
-            rnet_tcp_destroy(obj.tcp&);
+            rnet_tcp_internal_destroy(obj.tcp&);
         }
         else if (obj.type == RNET_OBJECT_UDP)
         {
-            rnet_udp_destroy(obj.udp&);
+            rnet_udp_internal_destroy(obj.udp&);
         }
     }
 
@@ -216,6 +216,19 @@ poll :: fn (no_timeout: bool) -> rnet_error
     count: u32 = 0;    
     rnet_for_each_object(obj: rnet_object&)
     {
+        if (obj.type == RNET_OBJECT_TCP && (obj.destroy_state == RNET_OBJECT_DESTROY_STATE_FINISHED || (obj.destroy_state == RNET_OBJECT_DESTROY_STATE_FLUSH && obj.tcp.writes == NULL)))
+        {
+            if (obj.tcp.destroy_fn != NULL) obj.tcp.destroy_fn(obj.tcp&);
+            rnet_tcp_internal_destroy(obj.tcp&);
+            continue;
+        }
+        if (obj.type == RNET_OBJECT_UDP && (obj.destroy_state == RNET_OBJECT_DESTROY_STATE_FINISHED || (obj.destroy_state == RNET_OBJECT_DESTROY_STATE_FLUSH && obj.udp.writes == NULL)))
+        {
+            if (obj.udp.destroy_fn != NULL) obj.udp.destroy_fn(obj.udp&);
+            rnet_udp_internal_destroy(obj.udp&);
+            continue;
+        }
+
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
         obj_id: rnet_object_id& = g_rnet.poll_obj_ids[count]&;
         obj_id@ = rnet_object_get_id(obj);
@@ -310,16 +323,14 @@ poll :: fn (no_timeout: bool) -> rnet_error
                         if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS && poll_fd.out_events != 0)
                         {
                             rnet_tcp_internal_accept_ssl(tcp);
-                            obj = rnet_get_object(obj_id);
                         }
                         else
                         {
                             if (poll_fd.out_events & RNET_POLLIN > 0)  
                             {
                                 rnet_tcp_internal_read(tcp);
-                                obj = rnet_get_object(obj_id);
                             }
-                            if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0) 
+                            if (obj.destroy_state != RNET_OBJECT_DESTROY_STATE_FINISHED && poll_fd.out_events & RNET_POLLOUT > 0) 
                             {
                                 rnet_tcp_internal_write(tcp);
                             }
@@ -336,9 +347,8 @@ poll :: fn (no_timeout: bool) -> rnet_error
                             if (poll_fd.out_events & RNET_POLLIN > 0)  
                             {
                                 rnet_tcp_internal_read(tcp);
-                                obj = rnet_get_object(obj_id);
                             }
-                            if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0) 
+                            if (obj.destroy_state != RNET_OBJECT_DESTROY_STATE_FINISHED && poll_fd.out_events & RNET_POLLOUT > 0) 
                             {
                                 rnet_tcp_internal_write(tcp);
                             }
@@ -372,11 +382,9 @@ poll :: fn (no_timeout: bool) -> rnet_error
                         udp.recv_fn(udp, from, udp.read_buffer, res);
                         std_mem_set(udp.read_buffer, udp.read_buffer_capacity, 0);
                     }
-
-                    obj = rnet_get_object(obj_id);
                 }
                 
-                if (obj != NULL && poll_fd.out_events & RNET_POLLOUT > 0)
+                if (obj.destroy_state != RNET_OBJECT_DESTROY_STATE_FINISHED && poll_fd.out_events & RNET_POLLOUT > 0)
                 {
                     write: rnet_object_write& = udp.writes;
                     if (write != NULL)
@@ -390,9 +398,7 @@ poll :: fn (no_timeout: bool) -> rnet_error
                         else
                         {
                             write.udp_sent_fn(udp, write.address, write.buffer, res);
-                            
-                            obj = rnet_get_object(obj_id);
-                            if (obj != NULL)
+                            if (obj.destroy_state != RNET_OBJECT_DESTROY_STATE_FINISHED)
                             {
                                 next: rnet_object_write& = udp.writes.next;
                                 rnet_push_object_write(udp.writes);

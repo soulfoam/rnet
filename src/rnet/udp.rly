@@ -4,7 +4,7 @@ export_library
     rnet_udp_id              :: type_alias = rnet_object_id;
 
     rnet_udp_create          :: fn (udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rnet_error;
-    rnet_udp_destroy         :: fn (udp: rnet_udp&);
+    rnet_udp_destroy         :: fn (udp: rnet_udp&, error: rnet_error, destroy_fn: rnet_udp_destroy_fn&);
     rnet_udp_set_recv        :: fn (udp: rnet_udp&, read_buffer: void&, read_buffer_capacity: usize, recv_fn: rnet_udp_recv_fn&);
     rnet_udp_bind            :: fn (udp: rnet_udp&, address: rnet_address) -> rnet_error;
     rnet_udp_send            :: fn (udp: rnet_udp&, address: rnet_address, buffer: void&, buffer_size: usize, sent_fn: rnet_udp_sent_fn&);
@@ -16,6 +16,7 @@ export_library
     rnet_udp_error_fn        :: type_alias = fn (udp: rnet_udp&, error: rnet_error);
     rnet_udp_recv_fn         :: type_alias = fn (udp: rnet_udp&, from_address: rnet_address, buffer: void&, buffer_size: usize);
     rnet_udp_sent_fn         :: type_alias = fn (udp: rnet_udp&, to_address: rnet_address, buffer: void&, buffer_size: usize);
+    rnet_udp_destroy_fn      :: type_alias = fn (udp: rnet_udp&);
 }
 
 export
@@ -26,10 +27,12 @@ export
         read_buffer          : void&;
         read_buffer_capacity : usize;
         writes               : rnet_object_write&;
+        destroy_fn           : rnet_udp_destroy_fn&;
         error_fn             : rnet_udp_error_fn&;
         recv_fn              : rnet_udp_recv_fn&;
     }
 
+    rnet_udp_internal_destroy :: fn (udp: rnet_udp&);
 }
 
 import
@@ -56,14 +59,25 @@ rnet_udp_create :: fn (dst_udp: rnet_udp&&, error_fn: rnet_udp_error_fn&) -> rne
     dst_udp@ = obj.udp&;
     std_mem_set(dst_udp@, size_of(rnet_udp), 0);
 
-    dst_udp.base     = obj;
-    dst_udp.base.socket   = socket;
-    dst_udp.error_fn = error_fn;
+    dst_udp.base        = obj;
+    dst_udp.base.socket = socket;
+    dst_udp.error_fn    = error_fn;
 
     return RNET_OK;
 }
 
-rnet_udp_destroy :: fn (udp: rnet_udp&)
+rnet_udp_destroy :: fn (udp: rnet_udp&, error: rnet_error, destroy_fn: rnet_udp_destroy_fn&)
+{
+    if (udp == NULL) return;
+    udp.destroy_fn = destroy_fn;
+    udp.base.destroy_state = RNET_OBJECT_DESTROY_STATE_FLUSH; 
+    if (rnet_error_is_fatal(error))
+    {
+        udp.base.destroy_state = RNET_OBJECT_DESTROY_STATE_FINISHED; 
+    }
+}
+
+rnet_udp_internal_destroy :: fn (udp: rnet_udp&)
 {
     rnet_udp_clear_datagrams(udp);
     rnet_object_destroy(udp.base);
