@@ -13,7 +13,9 @@ export_library
     SSL_set_fd :: fn (s: SSL&, fd: c_int) -> c_int = extern "SSL_set_fd";
     SSL_get_fd :: fn (s: SSL&) -> c_int            = extern "SSL_get_fd";
 
-    SSL_set_tlsext_host_name :: fn (s: SSL&, name: c_char&) -> c_int = extern "SSL_set_tlsext_host_name";
+    SSL_set1_host :: fn (s: SSL&, name: c_char&) -> c_int = extern "SSL_set1_host";
+    SSL_add1_host :: fn (s: SSL&, name: c_char&) -> c_int = extern "SSL_add1_host";
+    SSL_set_hostflags :: fn (s: SSL&, flags: c_uint) = extern "SSL_set_hostflags";
 
     SSL_shutdown                 :: fn (s: SSL&) -> c_int                                                    = extern "SSL_shutdown";
 
