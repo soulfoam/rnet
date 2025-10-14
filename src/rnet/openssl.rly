@@ -17,6 +17,10 @@ export_library
     SSL_add1_host :: fn (s: SSL&, name: c_char&) -> c_int = extern "SSL_add1_host";
     SSL_set_hostflags :: fn (s: SSL&, flags: c_uint) = extern "SSL_set_hostflags";
 
+    SSL_ctrl                     :: fn (ssl: SSL&, cmd: c_int, larg: c_long, parg: void&) -> c_long = extern "SSL_ctrl";
+    SSL_CTRL_SET_TLSEXT_HOSTNAME :: define c_int = 55;
+    TLSEXT_NAMETYPE_host_name    :: define c_int = 0;
+
     SSL_shutdown                 :: fn (s: SSL&) -> c_int                                                    = extern "SSL_shutdown";
 
     SSL_accept                   :: fn (s: SSL&) -> c_int                                                    = extern "SSL_accept";
@@ -73,6 +77,7 @@ export_library
 
     PKCS5_PBKDF2_HMAC_SHA1 :: fn (pass: c_char&, pass_size: c_int, salt: c_uchar&, salt_size: c_int, iter: c_int, key_size: c_int, out: c_uchar&) -> c_int = extern "PKCS5_PBKDF2_HMAC_SHA1";
     RAND_bytes             :: fn (buf: c_uchar&, num: c_int) -> c_int = extern "RAND_bytes";
+
 }
 
 #end
