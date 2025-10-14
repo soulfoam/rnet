@@ -17,6 +17,7 @@ export_library
     rnet_tcp_listen_ssl          :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
     rnet_tcp_bind_and_listen_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, backlog: u16, accept_fn: rnet_tcp_accept_fn&) -> rnet_error;
     rnet_tcp_connect_ssl         :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rnet_address, read_buffer: void&, read_buffer_capacity: usize, read_fn: rnet_tcp_read_fn&, connect_fn: rnet_tcp_connect_fn&);
+    rnet_tcp_get_ssl             :: fn (tcp: rnet_tcp&) -> SSL&;
 #end
 
     rnet_tcp_get_id        :: fn (tcp: rnet_tcp&) -> rnet_tcp_id;
@@ -707,6 +708,11 @@ rnet_tcp_connect_ssl :: fn (tcp: rnet_tcp&, ctx: rnet_ssl_context&, address: rne
     SSL_set_fd(tcp.ssl, tcp.base.socket) as void;
 
     rnet_tcp_connect(tcp, address, read_buffer, read_buffer_capacity, read_fn, connect_fn);
+}
+
+rnet_tcp_get_ssl :: fn (tcp: rnet_tcp&) -> SSL&
+{
+    return tcp.ssl;
 }
 
 try_connect_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
