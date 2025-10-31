@@ -112,6 +112,7 @@ export
     rnet_tcp_internal_accept_ssl :: fn (tcp: rnet_tcp&);
     rnet_tcp_internal_read       :: fn (tcp: rnet_tcp&);
     rnet_tcp_internal_write      :: fn (tcp: rnet_tcp&);
+    rnet_tcp_internal_error      :: fn (tcp: rnet_tcp&);
 
     rnet_tcp_for_each_write_object :: it (tcp: rnet_tcp&, declare write: rnet_object_write&);
 }
@@ -598,6 +599,18 @@ rnet_tcp_internal_read :: fn (tcp: rnet_tcp&)
         tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED);
     }    
   
+}
+
+rnet_tcp_internal_error :: fn (tcp: rnet_tcp&)
+{    
+#if RNET_OPENSSL
+    if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS)
+    {
+        rnet_tcp_internal_destroy(tcp);
+        return;
+    }
+#end
+    tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED);
 }
 
 rnet_tcp_internal_write :: fn (tcp: rnet_tcp&)

@@ -39,6 +39,8 @@ export_library
     SSL_CTX_free                 :: fn (ctx: SSL_CTX&)                                                       = extern "SSL_CTX_free";
     SSL_CTX_use_PrivateKey_file  :: fn (ctx: SSL_CTX&, file: c_char&, type: c_int) -> c_int                  = extern "SSL_CTX_use_PrivateKey_file";
     SSL_CTX_use_certificate_file :: fn (ctx: SSL_CTX&, file: c_char&, type: c_int) -> c_int                  = extern "SSL_CTX_use_certificate_file";
+    SSL_CTX_use_certificate_chain_file :: fn (ctx: SSL_CTX&, file: c_char&) -> c_int                  = extern "SSL_CTX_use_certificate_chain_file";
+
 
     TLS_client_method :: fn () -> SSL_METHOD& = extern "TLS_client_method";
     TLS_server_method :: fn () -> SSL_METHOD& = extern "TLS_server_method";

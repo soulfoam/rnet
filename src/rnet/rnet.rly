@@ -294,8 +294,6 @@ poll :: fn (no_timeout: bool) -> rnet_error
     res: c_int = rnet_native_poll(g_rnet.poll_fds, count, timeout_ms);
     if (res < 0) return RNET_ERROR_POLL;
 
-    // All of the (obj != NULL) checks are because in any given callback the object could be destroyed
-    // Maybe we should just make destroy async
     for_each_object_being_polled(count, obj_id: rnet_object_id, i: u32)
     {
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[i]&;
@@ -359,7 +357,7 @@ poll :: fn (no_timeout: bool) -> rnet_error
             }
             else
             {
-                tcp.error_fn(tcp, RNET_ERROR_TCP_CLOSED);
+                rnet_tcp_internal_error(tcp);
             }
         }
         else if (obj.type == RNET_OBJECT_UDP)

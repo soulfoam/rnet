@@ -36,7 +36,7 @@ rnet_ssl_context_create_server :: fn (dst_ctx: rnet_ssl_context&&, certificate_p
     std_mem_print(cert_file, STD_IO_PATH_MAX, "{}\0", certificate_path) as void;
     std_mem_print(priv_key_file, STD_IO_PATH_MAX, "{}\0", private_key_path) as void;
 
-    if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) <= 0)
+    if (SSL_CTX_use_certificate_chain_file(ctx, cert_file) <= 0)
     {
         SSL_CTX_free(ctx);
         return RNET_ERROR_SSL_CERTIFICATE;
