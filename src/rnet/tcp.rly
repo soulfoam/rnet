@@ -655,11 +655,11 @@ handle_current_write_buffer :: fn (tcp: rnet_tcp&)
 {
     if (tcp.writes.bytes_written >= tcp.writes.buffer_size)
     {
-        next: rnet_object_write& = tcp.writes.next;
-        rnet_push_object_write(tcp.writes);
+        cur: rnet_object_write& = tcp.writes;
+        next: rnet_object_write& = cur.next;
         tcp.writes = next;
-
-        if (tcp.writes.tcp_write_fn != NULL) tcp.writes.tcp_write_fn(tcp, true);
+        if (cur.tcp_write_fn != NULL) cur.tcp_write_fn(tcp, true);
+        rnet_push_object_write(cur);
     }
     else
     {
