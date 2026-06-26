@@ -281,12 +281,9 @@ poll :: fn (no_timeout: bool) -> rnet_error
     now: u64 = rnet_time_now_ms();
     rnet_for_each_active_timer(timer: rnet_timer&)
     {
-        remaining: u64 = (timer.start + timer.time_ms) - now; 
-        if (remaining < timeout_ms) 
-        {
-            timeout_ms = remaining as s32;
-            if (timeout_ms < 0) timeout_ms = 0;
-        }
+        remaining: s64 = ((timer.start + timer.time_ms) as s64) - (now as s64);
+        if (remaining < 0) remaining = 0;
+        if (remaining < timeout_ms) timeout_ms = remaining as s32;
     }
     if (timeout_ms == S32_MAX_VALUE) timeout_ms = -1;
     if (no_timeout) timeout_ms = 0;

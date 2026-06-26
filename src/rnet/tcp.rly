@@ -653,17 +653,19 @@ rnet_tcp_internal_write :: fn (tcp: rnet_tcp&)
 
 handle_current_write_buffer :: fn (tcp: rnet_tcp&)
 {
+    tcp_write_fn: rnet_tcp_write_fn& = tcp.writes.write_fn;
+
     if (tcp.writes.bytes_written >= tcp.writes.buffer_size)
     {
         next: rnet_object_write& = tcp.writes.next;
         rnet_push_object_write(tcp.writes);
         tcp.writes = next;
 
-        if (tcp.writes.tcp_write_fn != NULL) tcp.writes.tcp_write_fn(tcp, true);
+        if (tcp_write_fn != NULL) tcp_write_fn(tcp, true);
     }
     else
     {
-        if (tcp.writes.tcp_write_fn != NULL) tcp.writes.tcp_write_fn(tcp, false);
+        if (tcp_write_fn != NULL) tcp_write_fn(tcp, false);
     }
 }
 
