@@ -653,7 +653,7 @@ rnet_tcp_internal_write :: fn (tcp: rnet_tcp&)
 
 handle_current_write_buffer :: fn (tcp: rnet_tcp&)
 {
-    tcp_write_fn: rnet_tcp_write_fn& = tcp.writes.write_fn;
+    tcp_write_fn: rnet_tcp_write_fn& = tcp.writes.tcp_write_fn;
 
     if (tcp.writes.bytes_written >= tcp.writes.buffer_size)
     {
