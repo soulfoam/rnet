@@ -86,8 +86,20 @@ export
     #if RNET_OPENSSL    
         ssl : SSL&;
         ctx : rnet_ssl_context&;
+        ssl_want               : rnet_ssl_want;
+        ssl_handshake_start_ms : u64;
     #end
     }
+
+#if RNET_OPENSSL
+    rnet_ssl_want :: enum u8
+    {
+        RNET_SSL_WANT_READ;
+        RNET_SSL_WANT_WRITE;
+    }
+
+    RNET_SSL_HANDSHAKE_TIMEOUT_MS :: define u64 = 15000;
+#end
 
     rnet_tcp_type :: enum u8
     {
@@ -528,6 +540,8 @@ rnet_tcp_internal_accept :: fn (listener: rnet_tcp&)
 
         tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
         tcp.accept_fn = listener.accept_fn;
+        tcp.ssl_want  = RNET_SSL_WANT_READ; 
+        tcp.ssl_handshake_start_ms = rnet_time_now_ms();
         return;
     }
 #end
@@ -739,8 +753,13 @@ try_connect_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
         switch (ssl_err)
         {
             SSL_ERROR_WANT_READ
+            {
+                tcp.ssl_want = RNET_SSL_WANT_READ;
+                return RNET_ERROR_TRY_AGAIN;
+            }
             SSL_ERROR_WANT_WRITE
             {
+                tcp.ssl_want = RNET_SSL_WANT_WRITE;
                 return RNET_ERROR_TRY_AGAIN;
             }
             default
@@ -841,8 +860,13 @@ accept_ssl :: fn (tcp: rnet_tcp&) -> rnet_error
         switch (ssl_err)
         {
             SSL_ERROR_WANT_READ
+            {
+                tcp.ssl_want = RNET_SSL_WANT_READ;
+                return RNET_ERROR_TRY_AGAIN;
+            }
             SSL_ERROR_WANT_WRITE
             {
+                tcp.ssl_want = RNET_SSL_WANT_WRITE;
                 return RNET_ERROR_TRY_AGAIN;
             }
             default

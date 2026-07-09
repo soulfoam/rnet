@@ -229,6 +229,17 @@ poll :: fn (no_timeout: bool) -> rnet_error
             continue;
         }
 
+#if RNET_OPENSSL
+        if (obj.type == RNET_OBJECT_TCP && obj.tcp.type == RNET_TCP_LISTENER_CONNECTION && obj.tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS)
+        {
+            if (rnet_time_now_ms() - obj.tcp.ssl_handshake_start_ms >= RNET_SSL_HANDSHAKE_TIMEOUT_MS)
+            {
+                rnet_tcp_internal_destroy(obj.tcp&);
+                continue;
+            }
+        }
+#end
+
         poll_fd: rnet_poll_fd& = g_rnet.poll_fds[count]&;
         obj_id: rnet_object_id& = g_rnet.poll_obj_ids[count]&;
         obj_id@ = rnet_object_get_id(obj);
@@ -252,11 +263,24 @@ poll :: fn (no_timeout: bool) -> rnet_error
             }
      
             if (tcp.type == RNET_TCP_LISTENER || 
-               (tcp.type == RNET_TCP_CONNECTOR && rnet_tcp_is_connect_in_progress(tcp)) ||
-               (tcp.type == RNET_TCP_LISTENER_CONNECTION && tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS))
+               (tcp.type == RNET_TCP_CONNECTOR && rnet_tcp_is_connect_in_progress(tcp)))
             {
                 poll_fd.in_events = RNET_POLLIN | RNET_POLLOUT;
             }
+
+#if RNET_OPENSSL
+            if (tcp.state == RNET_TCP_STATE_SSL_IN_PROGRESS)
+            {
+                if (tcp.ssl_want == RNET_SSL_WANT_WRITE)
+                {
+                    poll_fd.in_events = RNET_POLLOUT;
+                }
+                else
+                {
+                    poll_fd.in_events = RNET_POLLIN;
+                }
+            }
+#end
         }
         else if (obj.type == RNET_OBJECT_UDP)
         {
