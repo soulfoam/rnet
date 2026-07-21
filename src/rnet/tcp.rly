@@ -471,6 +471,7 @@ rnet_tcp_internal_connect :: fn (tcp: rnet_tcp&)
         if (tcp.ssl != NULL) 
         {
             tcp.state = RNET_TCP_STATE_SSL_IN_PROGRESS;
+            tcp.ssl_want = RNET_SSL_WANT_WRITE;
             return;
         }
 #end
